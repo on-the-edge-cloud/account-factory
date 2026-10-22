@@ -17,6 +17,7 @@ export interface ExistingProjectBuildInfo {
   scripts: Record<string, string>;
   previewDeployCommand: string;
   productionDeployCommand: string;
+  previewRemoveCommand: string;
   yarnLock: string;
 }
 
@@ -49,6 +50,7 @@ export async function validateNewProject(
       },
       previewDeployCommand: "yarn sst deploy --stage preview-$PR_NUMBER",
       productionDeployCommand: "yarn sst deploy --stage production",
+      previewRemoveCommand: "yarn sst remove --stage preview-$PR_NUMBER",
       yarnLock: await readFile(join(tempDirectory, "yarn.lock"), "utf8"),
     };
   } finally {
@@ -216,7 +218,7 @@ function findDeploymentCommands(
   existingCommands: Record<string, string>,
 ): Pick<
   ExistingProjectBuildInfo,
-  "previewDeployCommand" | "productionDeployCommand"
+  "previewDeployCommand" | "productionDeployCommand" | "previewRemoveCommand"
 > {
   const run = packageManager === "npm" ? "npm run" : `${packageManager} run`;
   if (
@@ -226,12 +228,16 @@ function findDeploymentCommands(
     return {
       previewDeployCommand: existingCommands["preview-deploy"],
       productionDeployCommand: existingCommands["production-deploy"],
+      previewRemoveCommand: existingCommands["preview-remove"] ?? "",
     };
   }
   if (scripts["deploy:preview"] && scripts["deploy:production"]) {
     return {
       previewDeployCommand: `${run} deploy:preview`,
       productionDeployCommand: `${run} deploy:production`,
+      previewRemoveCommand: scripts["remove:preview"]
+        ? `${run} remove:preview`
+        : "",
     };
   }
   if (
@@ -242,6 +248,7 @@ function findDeploymentCommands(
     return {
       previewDeployCommand: `${packageManager} sst deploy --stage preview-$PR_NUMBER`,
       productionDeployCommand: `${packageManager} sst deploy --stage production`,
+      previewRemoveCommand: `${packageManager} sst remove --stage preview-$PR_NUMBER`,
     };
   }
   throw new Error(
@@ -282,7 +289,8 @@ async function installDependencies(
 
 function installCommand(manager: PackageManager, hasLockfile: boolean): string {
   if (manager === "npm") return hasLockfile ? "npm ci" : "npm install";
-  if (manager === "yarn") return `corepack enable && yarn install${hasLockfile ? " --frozen-lockfile" : ""}`;
+  if (manager === "yarn")
+    return `corepack enable && yarn install${hasLockfile ? " --frozen-lockfile" : ""}`;
   return `corepack enable && pnpm install${hasLockfile ? " --frozen-lockfile" : ""}`;
 }
 

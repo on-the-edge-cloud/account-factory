@@ -104,6 +104,9 @@ export function deploymentPolicy(
         "cloudfront:GetDistribution",
         "cloudfront:GetDistributionConfig",
         "cloudfront:ListDistributions",
+        "cloudfront:CreateInvalidation",
+        "cloudfront:GetInvalidation",
+        "cloudfront:ListInvalidations",
         "cloudfront:TagResource",
         "cloudfront:UntagResource",
       ],
@@ -164,6 +167,8 @@ export function deploymentPolicy(
           "lambda:UpdateFunctionConfiguration",
           "lambda:DeleteFunction",
           "lambda:GetFunction",
+          "lambda:AddPermission",
+          "lambda:RemovePermission",
           "lambda:TagResource",
           "lambda:UntagResource",
         ],
@@ -178,7 +183,10 @@ export function deploymentPolicy(
           "apigateway:PATCH",
           "apigateway:DELETE",
         ],
-        Resource: `arn:aws:apigateway:*::/restapis/*`,
+        Resource: [
+          "arn:aws:apigateway:*::/restapis/*",
+          "arn:aws:apigateway:*::/apis/*",
+        ],
       },
     );
   }
@@ -290,7 +298,10 @@ async function assumeAccountRole(
   managementClient: STSClient,
   accountId: string,
 ): Promise<IAMClient> {
-  const credentials = await assumeOrganizationAccessRole(managementClient, accountId);
+  const credentials = await assumeOrganizationAccessRole(
+    managementClient,
+    accountId,
+  );
   return new IAMClient({
     credentials,
   });

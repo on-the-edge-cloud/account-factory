@@ -17,8 +17,14 @@ export async function assumeOrganizationAccessRole(
     }),
   );
   const credentials = response.Credentials;
-  if (!credentials?.AccessKeyId || !credentials.SecretAccessKey || !credentials.SessionToken) {
-    throw new Error(`Could not assume OrganizationAccountAccessRole in ${accountId}.`);
+  if (
+    !credentials?.AccessKeyId ||
+    !credentials.SecretAccessKey ||
+    !credentials.SessionToken
+  ) {
+    throw new Error(
+      `Could not assume OrganizationAccountAccessRole in ${accountId}.`,
+    );
   }
   return {
     accessKeyId: credentials.AccessKeyId,

@@ -7,7 +7,8 @@ describe("project provisioning order", () => {
     const createAccount = vi.fn();
     const priorEnvironment = {
       AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
-      ACTIONS_ID_TOKEN_REQUEST_TOKEN: process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN,
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN:
+        process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN,
       ACCOUNT_FACTORY_GITHUB_TOKEN: process.env.ACCOUNT_FACTORY_GITHUB_TOKEN,
     };
     process.env.AWS_ACCESS_KEY_ID = "test-access-key";
@@ -56,8 +57,12 @@ describe("project provisioning order", () => {
       expect(dependencies.configureRoles).not.toHaveBeenCalled();
       expect(dependencies.commitFiles).not.toHaveBeenCalled();
       expect(process.env.AWS_ACCESS_KEY_ID).toBe("test-access-key");
-      expect(process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN).toBe("test-oidc-token");
-      expect(process.env.ACCOUNT_FACTORY_GITHUB_TOKEN).toBe("test-github-token");
+      expect(process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN).toBe(
+        "test-oidc-token",
+      );
+      expect(process.env.ACCOUNT_FACTORY_GITHUB_TOKEN).toBe(
+        "test-github-token",
+      );
     } finally {
       for (const [key, value] of Object.entries(priorEnvironment)) {
         if (value === undefined) delete process.env[key];

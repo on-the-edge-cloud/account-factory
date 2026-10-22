@@ -17,6 +17,7 @@ export interface ProjectFileOptions {
   scripts?: Record<string, string>;
   previewDeployCommand?: string;
   productionDeployCommand?: string;
+  previewRemoveCommand?: string;
   branch?: string;
 }
 
@@ -40,13 +41,13 @@ export function projectManifest(
     options.scripts ??
     (isNew ? { build: "build", lint: "lint", typecheck: "typecheck" } : {});
   const run = packageManager === "npm" ? "npm run" : `${packageManager} run`;
-  const install = options.installCommand ?? (
-    packageManager === "npm"
+  const install =
+    options.installCommand ??
+    (packageManager === "npm"
       ? "npm ci"
       : packageManager === "yarn"
         ? "corepack enable && yarn install --frozen-lockfile"
-        : "corepack enable && pnpm install --frozen-lockfile"
-  );
+        : "corepack enable && pnpm install --frozen-lockfile");
   const existingDocument = options.existingManifest
     ? parseDocument(options.existingManifest)
     : undefined;
@@ -56,7 +57,10 @@ export function projectManifest(
     );
   }
   const priorDomain = existingDocument?.getIn(["app", "domain"]);
-  const priorDomainProvider = existingDocument?.getIn(["app", "domain-provider"]);
+  const priorDomainProvider = existingDocument?.getIn([
+    "app",
+    "domain-provider",
+  ]);
   const deploymentCommands = {
     install,
     build: scripts.build ? `${run} build` : "",
@@ -71,7 +75,7 @@ export function projectManifest(
       (isNew ? `${packageManager} sst deploy --stage production` : ""),
     "preview-remove": isNew
       ? `${packageManager} sst remove --stage preview-$PR_NUMBER`
-      : "",
+      : (options.previewRemoveCommand ?? ""),
   };
   const app: Record<string, unknown> = {
     name: input.projectName,
@@ -94,7 +98,8 @@ export function projectManifest(
     "domain-provider": input.customDomain
       ? { certificate: "acm", dns: "route53" }
       : options.existing
-        ? priorDomainProvider ?? (priorDomain ? { certificate: "acm", dns: "route53" } : null)
+        ? (priorDomainProvider ??
+          (priorDomain ? { certificate: "acm", dns: "route53" } : null))
         : null,
     "output-directory": input.appType === "static" ? "out" : ".next",
     commands: deploymentCommands,
@@ -164,13 +169,15 @@ export function planProjectFiles(
     Object.assign(files, newApplicationFiles(input, accountId));
 
   const created = Object.keys(files).filter(
-    (path) => !existingPaths.has(path) && (options.existing || path !== "README.md"),
+    (path) =>
+      !existingPaths.has(path) && (options.existing || path !== "README.md"),
   );
-  const updated = options.existing && options.existingManifest
-    ? ["nextjs-app.yml"]
-    : options.existing
-      ? []
-      : ["README.md"];
+  const updated =
+    options.existing && options.existingManifest
+      ? ["nextjs-app.yml"]
+      : options.existing
+        ? []
+        : ["README.md"];
   const ignored = [previewChoice.ignored, deployChoice.ignored].filter(
     (path): path is string => Boolean(path),
   );
@@ -384,7 +391,7 @@ function deploymentWorkflow(
       "          OUTPUT_DIRECTORY: ${{ steps.app-config.outputs.output_directory }}",
       "          APP_DOMAIN: ${{ steps.app-config.outputs.domain }}",
       "      - name: Remove preview",
-      "        if: github.event_name == 'pull_request' && github.event.action == 'closed'",
+      "        if: github.event_name == 'pull_request' && github.event.action == 'closed' && steps.app-config.outputs.remove_command != ''",
       `        run: ${runCommand}`,
       "        env:",
       "          APP_COMMAND: ${{ steps.app-config.outputs.remove_command }}",

@@ -114,7 +114,10 @@ describe("generated project files", () => {
     expect(config.service).toBe("legacy-service");
     expect(config.app["custom-setting"]).toBe("keep-me");
     expect(config.app.domain).toBe("keep.example.com");
-    expect(config.app["domain-provider"]).toEqual({ certificate: "acm", dns: "route53" });
+    expect(config.app["domain-provider"]).toEqual({
+      certificate: "acm",
+      dns: "route53",
+    });
     expect(config.app.commands["custom-deploy"]).toBe("deploy.sh");
   });
 
@@ -182,7 +185,11 @@ describe("generated project files", () => {
   });
 
   it("reports the GitHub auto-init README as updated for a new repository", () => {
-    const plan = planProjectFiles(input, "123456789012", roleNames(input.projectName));
+    const plan = planProjectFiles(
+      input,
+      "123456789012",
+      roleNames(input.projectName),
+    );
     expect(plan.created).not.toContain("README.md");
     expect(plan.updated).toContain("README.md");
   });

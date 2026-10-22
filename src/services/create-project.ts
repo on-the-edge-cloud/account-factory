@@ -82,6 +82,7 @@ export async function createProject(
       scripts: buildInfo.scripts,
       previewDeployCommand: buildInfo.previewDeployCommand,
       productionDeployCommand: buildInfo.productionDeployCommand,
+      previewRemoveCommand: buildInfo.previewRemoveCommand,
       branch: repository.branch,
     };
     planProjectFiles(input, "000000000000", names, fileOptions);
