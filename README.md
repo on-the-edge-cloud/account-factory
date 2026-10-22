@@ -12,6 +12,18 @@ Create `ACCOUNT_FACTORY_GITHUB_TOKEN` as a fine-grained token or GitHub App toke
 
 The generated production workflow declares the GitHub Environment `production`. A repository administrator must configure that environment with required reviewers and any deployment branch restrictions before production use; reviewer identities are not guessed or created by the factory.
 
+## Configurar la cuenta de gestión
+
+El bootstrap crea o actualiza `account-factory-github-bootstrap` en la cuenta de gestión `191926569765`. Su trust policy acepta únicamente `repo:on-the-edge-cloud/account-factory:ref:refs/heads/main` y reutiliza el proveedor OIDC existente; no crea access keys.
+
+1. Abre AWS CloudShell con una sesión autenticada en la cuenta de gestión `191926569765`.
+2. Copia [create-account-factory-bootstrap.sh](create-account-factory-bootstrap.sh) a CloudShell. Puedes crear el archivo con `nano create-account-factory-bootstrap.sh`, pegar el contenido y guardar con `Ctrl+O`, `Enter`, `Ctrl+X`.
+3. Ejecútalo con `bash create-account-factory-bootstrap.sh`. El script verifica la cuenta activa y el proveedor OIDC antes de crear o actualizar el rol.
+4. Copia el ARN que imprime al final.
+5. En GitHub, abre **on-the-edge-cloud/account-factory → Settings → Secrets and variables → Actions → Variables**, crea `AWS_ACCOUNT_FACTORY_ROLE_ARN` y pega el ARN. Es una variable, no un secret.
+
+Después, ejecuta **Actions → Create project → Run workflow** desde `main`. CloudShell usa las credenciales de la sesión autenticada; no hace falta configurar un perfil local ni access keys.
+
 ## Create a project
 
 Run **Actions > Create project > Run workflow** from `main`. Inputs include the kebab-case project name, `static` or `ssr`, optional custom domain, AWS region, and Node version. Root emails use `fmoreno+<project_name>@ontheedge.cloud`.
