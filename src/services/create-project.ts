@@ -24,6 +24,7 @@ import {
 import {
   validateExistingProject,
   validateNewProject,
+  type ExistingProjectBuildInfo,
 } from "./project-validation.js";
 
 export interface CreateProjectDependencies {
@@ -55,30 +56,38 @@ export async function createProject(
 ) {
   validateProjectInput(input);
   const names = roleNames(input.projectName);
-  const repository: RepositorySnapshot = await dependencies.inspectRepository(
-    githubToken,
-    input.projectName,
-  );
-  const buildInfo = repository.exists
-    ? await dependencies.validateExisting(
-        repository.htmlUrl!,
-        repository.branch,
-        input.projectName,
-        githubToken,
-      )
-    : await dependencies.validateNew(input);
-  const fileOptions: ProjectFileOptions = {
-    existing: repository.exists,
-    existingPaths: repository.paths,
-    existingManifest: repository.manifest,
-    packageManager: buildInfo.packageManager,
-    installCommand: buildInfo.installCommand,
-    scripts: buildInfo.scripts,
-    previewDeployCommand: buildInfo.previewDeployCommand,
-    productionDeployCommand: buildInfo.productionDeployCommand,
-    branch: repository.branch,
-  };
-  planProjectFiles(input, "000000000000", names, fileOptions);
+  let repository: RepositorySnapshot;
+  let buildInfo: ExistingProjectBuildInfo;
+  let fileOptions: ProjectFileOptions;
+  const restoreCredentials = suspendWorkflowCredentials();
+  try {
+    repository = await dependencies.inspectRepository(
+      githubToken,
+      input.projectName,
+    );
+    buildInfo = repository.exists
+      ? await dependencies.validateExisting(
+          repository.htmlUrl!,
+          repository.branch,
+          input.projectName,
+          githubToken,
+        )
+      : await dependencies.validateNew(input);
+    fileOptions = {
+      existing: repository.exists,
+      existingPaths: repository.paths,
+      existingManifest: repository.manifest,
+      packageManager: buildInfo.packageManager,
+      installCommand: buildInfo.installCommand,
+      scripts: buildInfo.scripts,
+      previewDeployCommand: buildInfo.previewDeployCommand,
+      productionDeployCommand: buildInfo.productionDeployCommand,
+      branch: repository.branch,
+    };
+    planProjectFiles(input, "000000000000", names, fileOptions);
+  } finally {
+    restoreCredentials();
+  }
 
   const organizations = new OrganizationsClient({ region: input.awsRegion });
   const sts = new STSClient({ region: input.awsRegion });
@@ -116,5 +125,25 @@ export async function createProject(
     filesUpdated: plan.updated,
     filesIgnored: plan.ignored,
     status: "SUCCEEDED",
+  };
+}
+
+function suspendWorkflowCredentials(): () => void {
+  const saved: Record<string, string> = {};
+  for (const key of Object.keys(process.env)) {
+    if (
+      key.startsWith("AWS_") ||
+      key.startsWith("ACTIONS_") ||
+      key === "GITHUB_TOKEN" ||
+      key === "GH_TOKEN" ||
+      key === "ACCOUNT_FACTORY_GITHUB_TOKEN"
+    ) {
+      const value = process.env[key];
+      if (value !== undefined) saved[key] = value;
+      delete process.env[key];
+    }
+  }
+  return () => {
+    Object.assign(process.env, saved);
   };
 }

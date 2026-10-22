@@ -7,7 +7,8 @@ import {
   ListOpenIDConnectProvidersCommand,
   PutRolePolicyCommand,
 } from "@aws-sdk/client-iam";
-import { STSClient, AssumeRoleCommand } from "@aws-sdk/client-sts";
+import { STSClient } from "@aws-sdk/client-sts";
+import { assumeOrganizationAccessRole } from "./sts.js";
 import type { AppType } from "../validation.js";
 
 export interface RoleNames {
@@ -289,23 +290,9 @@ async function assumeAccountRole(
   managementClient: STSClient,
   accountId: string,
 ): Promise<IAMClient> {
-  const response = await managementClient.send(
-    new AssumeRoleCommand({
-      RoleArn: `arn:aws:iam::${accountId}:role/OrganizationAccountAccessRole`,
-      RoleSessionName: "account-factory-setup",
-    }),
-  );
-  const credentials = response.Credentials;
-  if (!credentials)
-    throw new Error(
-      `Could not assume OrganizationAccountAccessRole in ${accountId}.`,
-    );
+  const credentials = await assumeOrganizationAccessRole(managementClient, accountId);
   return new IAMClient({
-    credentials: {
-      accessKeyId: credentials.AccessKeyId!,
-      secretAccessKey: credentials.SecretAccessKey!,
-      sessionToken: credentials.SessionToken!,
-    },
+    credentials,
   });
 }
 

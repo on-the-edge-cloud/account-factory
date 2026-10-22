@@ -163,9 +163,14 @@ export function planProjectFiles(
   if (!options.existing)
     Object.assign(files, newApplicationFiles(input, accountId));
 
-  const created = Object.keys(files).filter((path) => !existingPaths.has(path));
-  const updated =
-    options.existing && options.existingManifest ? ["nextjs-app.yml"] : [];
+  const created = Object.keys(files).filter(
+    (path) => !existingPaths.has(path) && (options.existing || path !== "README.md"),
+  );
+  const updated = options.existing && options.existingManifest
+    ? ["nextjs-app.yml"]
+    : options.existing
+      ? []
+      : ["README.md"];
   const ignored = [previewChoice.ignored, deployChoice.ignored].filter(
     (path): path is string => Boolean(path),
   );

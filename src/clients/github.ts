@@ -114,43 +114,31 @@ export async function commitProjectFiles(
       has_issues: true,
       has_projects: false,
       has_wiki: false,
-      auto_init: false,
+      auto_init: true,
     });
     repositoryUrl = created.data.html_url;
-    branch = "main";
-    const tree = await octokit.git.createTree({
+    const defaultBranch = created.data.default_branch;
+    const defaultRef = await octokit.git.getRef({
       owner,
       repo: projectName,
-      tree: Object.entries(files).map(([path, content]) => ({
-        path,
-        mode: "100644" as const,
-        type: "blob" as const,
-        content,
-      })),
+      ref: `heads/${defaultBranch}`,
     });
-    const commit = await octokit.git.createCommit({
-      owner,
-      repo: projectName,
-      message: "Initialize project and AWS integration",
-      tree: tree.data.sha,
-      parents: [],
-    });
-    await octokit.git.createRef({
-      owner,
-      repo: projectName,
-      ref: "refs/heads/main",
-      sha: commit.data.sha,
-    });
-    await octokit.repos.update({
-      owner,
-      repo: projectName,
-      default_branch: "main",
-    });
-    return {
-      repositoryUrl: repositoryUrl ?? created.data.html_url,
-      branch,
-      commitSha: commit.data.sha,
-    };
+    if (defaultBranch !== "main") {
+      await octokit.git.createRef({
+        owner,
+        repo: projectName,
+        ref: "refs/heads/main",
+        sha: defaultRef.data.object.sha,
+      });
+      await octokit.repos.update({
+        owner,
+        repo: projectName,
+        default_branch: "main",
+      });
+      branch = "main";
+    } else {
+      branch = defaultBranch;
+    }
   }
 
   const currentRef = await octokit.git.getRef({
@@ -182,7 +170,9 @@ export async function commitProjectFiles(
   const commit = await octokit.git.createCommit({
     owner,
     repo: projectName,
-    message: "Add account-factory AWS integration",
+    message: snapshot.exists
+      ? "Add account-factory AWS integration"
+      : "Initialize project and AWS integration",
     tree: tree.data.sha,
     parents: [currentRef.data.object.sha],
   });

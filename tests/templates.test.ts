@@ -181,6 +181,12 @@ describe("generated project files", () => {
     expect(plan.ignored).toContain(".github/workflows/preview.yml");
   });
 
+  it("reports the GitHub auto-init README as updated for a new repository", () => {
+    const plan = planProjectFiles(input, "123456789012", roleNames(input.projectName));
+    expect(plan.created).not.toContain("README.md");
+    expect(plan.updated).toContain("README.md");
+  });
+
   it("exposes account provisioning outputs from the manually-triggered workflow", () => {
     const workflow = parse(
       readFileSync(".github/workflows/create-project.yml", "utf8"),

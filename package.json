@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "yarn@1.22.22",
   "scripts": {
-    "create-project": "tsx src/index.ts",
+    "create-project": "tsx src/scripts/create-project.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
