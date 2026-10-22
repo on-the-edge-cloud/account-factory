@@ -21,12 +21,18 @@ describe("project provisioning order", () => {
       commitFiles: vi.fn(),
     } as unknown as CreateProjectDependencies;
 
-    await expect(createProject({
-      projectName: "demo",
-      appType: "ssr",
-      awsRegion: "eu-west-1",
-      nodeVersion: "22",
-    }, "token", dependencies)).rejects.toThrow("build failed");
+    await expect(
+      createProject(
+        {
+          projectName: "demo",
+          appType: "ssr",
+          awsRegion: "eu-west-1",
+          nodeVersion: "22",
+        },
+        "token",
+        dependencies,
+      ),
+    ).rejects.toThrow("build failed");
     expect(createAccount).not.toHaveBeenCalled();
     expect(dependencies.configureRoles).not.toHaveBeenCalled();
     expect(dependencies.commitFiles).not.toHaveBeenCalled();
