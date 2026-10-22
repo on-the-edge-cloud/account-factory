@@ -46,6 +46,7 @@ jobs:
       files_created: ${{ steps.create-project.outputs.files_created }}
       files_updated: ${{ steps.create-project.outputs.files_updated }}
       files_ignored: ${{ steps.create-project.outputs.files_ignored }}
+      build_validation: ${{ steps.create-project.outputs.build_validation }}
       status: ${{ steps.create-project.outputs.status }}
     steps:
       - uses: actions/checkout@v4

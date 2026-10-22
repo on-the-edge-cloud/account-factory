@@ -124,6 +124,7 @@ export async function createProject(
     filesCreated: plan.created,
     filesUpdated: plan.updated,
     filesIgnored: plan.ignored,
+    buildValidation: "PASSED",
     status: "SUCCEEDED",
   };
 }

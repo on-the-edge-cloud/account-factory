@@ -201,6 +201,9 @@ describe("generated project files", () => {
     expect(workflow.jobs["create-project"].outputs.files_created).toContain(
       "steps.create-project.outputs.files_created",
     );
+    expect(workflow.jobs["create-project"].outputs.build_validation).toContain(
+      "steps.create-project.outputs.build_validation",
+    );
     expect(workflow.jobs["create-project"].if).toBe(
       "github.ref == 'refs/heads/main'",
     );
