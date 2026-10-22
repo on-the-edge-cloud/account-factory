@@ -13,6 +13,7 @@ const execFileAsync = promisify(execFile);
 
 export interface ExistingProjectBuildInfo {
   packageManager: PackageManager;
+  installCommand: string;
   scripts: Record<string, string>;
   previewDeployCommand: string;
   productionDeployCommand: string;
@@ -40,6 +41,7 @@ export async function validateNewProject(
       await runScript("yarn", script, tempDirectory);
     return {
       packageManager: "yarn",
+      installCommand: "corepack enable && yarn install --frozen-lockfile",
       scripts: {
         build: "yarn build",
         lint: "yarn lint",
@@ -185,19 +187,23 @@ export async function validateExistingProject(
       existingConfig?.app?.commands ?? {},
     );
 
-    await installDependencies(
-      packageManager,
+    const hasLockfile =
       paths.has("yarn.lock") ||
-        paths.has("package-lock.json") ||
-        paths.has("pnpm-lock.yaml"),
-      checkoutDirectory,
-    );
+      paths.has("package-lock.json") ||
+      paths.has("pnpm-lock.yaml");
+    await installDependencies(packageManager, hasLockfile, checkoutDirectory);
     for (const script of ["lint", "test", "typecheck", "build"]) {
       if (scripts[script])
         await runScript(packageManager, script, checkoutDirectory);
     }
 
-    return { packageManager, scripts, ...deploymentCommands, yarnLock: "" };
+    return {
+      packageManager,
+      installCommand: installCommand(packageManager, hasLockfile),
+      scripts,
+      ...deploymentCommands,
+      yarnLock: "",
+    };
   } finally {
     await rm(tempDirectory, { recursive: true, force: true });
   }
@@ -272,6 +278,12 @@ async function installDependencies(
     cwd,
     sanitizedEnvironment(),
   );
+}
+
+function installCommand(manager: PackageManager, hasLockfile: boolean): string {
+  if (manager === "npm") return hasLockfile ? "npm ci" : "npm install";
+  if (manager === "yarn") return `corepack enable && yarn install${hasLockfile ? " --frozen-lockfile" : ""}`;
+  return `corepack enable && pnpm install${hasLockfile ? " --frozen-lockfile" : ""}`;
 }
 
 async function runScript(

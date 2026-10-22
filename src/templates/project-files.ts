@@ -13,6 +13,7 @@ export interface ProjectFileOptions {
   existingPaths?: ReadonlySet<string>;
   existingManifest?: string;
   packageManager?: PackageManager;
+  installCommand?: string;
   scripts?: Record<string, string>;
   previewDeployCommand?: string;
   productionDeployCommand?: string;
@@ -39,12 +40,13 @@ export function projectManifest(
     options.scripts ??
     (isNew ? { build: "build", lint: "lint", typecheck: "typecheck" } : {});
   const run = packageManager === "npm" ? "npm run" : `${packageManager} run`;
-  const install =
+  const install = options.installCommand ?? (
     packageManager === "npm"
       ? "npm ci"
       : packageManager === "yarn"
         ? "corepack enable && yarn install --frozen-lockfile"
-        : "corepack enable && pnpm install --frozen-lockfile";
+        : "corepack enable && pnpm install --frozen-lockfile"
+  );
   const existingDocument = options.existingManifest
     ? parseDocument(options.existingManifest)
     : undefined;
@@ -54,6 +56,7 @@ export function projectManifest(
     );
   }
   const priorDomain = existingDocument?.getIn(["app", "domain"]);
+  const priorDomainProvider = existingDocument?.getIn(["app", "domain-provider"]);
   const deploymentCommands = {
     install,
     build: scripts.build ? `${run} build` : "",
@@ -90,7 +93,9 @@ export function projectManifest(
       input.customDomain ?? (options.existing ? (priorDomain ?? null) : null),
     "domain-provider": input.customDomain
       ? { certificate: "acm", dns: "route53" }
-      : null,
+      : options.existing
+        ? priorDomainProvider ?? (priorDomain ? { certificate: "acm", dns: "route53" } : null)
+        : null,
     "output-directory": input.appType === "static" ? "out" : ".next",
     commands: deploymentCommands,
   };

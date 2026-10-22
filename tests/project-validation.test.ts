@@ -32,6 +32,14 @@ describe("existing project package-manager detection", () => {
     ).toBe("pnpm");
   });
 
+  it("selects npm install rather than npm ci when an existing repo has no lockfile", () => {
+    const manager = detectPackageManager(
+      '{"packageManager":"npm@10.0.0","dependencies":{"next":"15"}}',
+      new Set(["package.json"]),
+    );
+    expect(manager).toBe("npm");
+  });
+
   it("rejects conflicting managers and non-Next repositories", () => {
     expect(() =>
       detectPackageManager(

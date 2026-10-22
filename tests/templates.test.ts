@@ -104,6 +104,7 @@ describe("generated project files", () => {
         existingPaths: new Set(["nextjs-app.yml"]),
         existingManifest,
         packageManager: "npm",
+        installCommand: "npm install",
         scripts: { build: "next build" },
         previewDeployCommand: "npm run deploy:preview",
         productionDeployCommand: "npm run deploy:production",
@@ -113,6 +114,7 @@ describe("generated project files", () => {
     expect(config.service).toBe("legacy-service");
     expect(config.app["custom-setting"]).toBe("keep-me");
     expect(config.app.domain).toBe("keep.example.com");
+    expect(config.app["domain-provider"]).toEqual({ certificate: "acm", dns: "route53" });
     expect(config.app.commands["custom-deploy"]).toBe("deploy.sh");
   });
 

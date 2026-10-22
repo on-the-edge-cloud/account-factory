@@ -72,6 +72,7 @@ export async function createProject(
     existingPaths: repository.paths,
     existingManifest: repository.manifest,
     packageManager: buildInfo.packageManager,
+    installCommand: buildInfo.installCommand,
     scripts: buildInfo.scripts,
     previewDeployCommand: buildInfo.previewDeployCommand,
     productionDeployCommand: buildInfo.productionDeployCommand,
