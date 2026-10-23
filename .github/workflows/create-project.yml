@@ -1,0 +1,70 @@
+name: Create project
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: Short kebab-case project name
+        required: true
+        type: string
+      app_type:
+        description: Next.js deployment type
+        required: true
+        type: choice
+        options:
+          - static
+          - ssr
+      custom_domain:
+        description: Optional DNS hostname
+        required: false
+        type: string
+      aws_region:
+        description: AWS region
+        required: false
+        default: eu-west-1
+        type: string
+      node_version:
+        description: Node.js major version
+        required: false
+        default: "22"
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  create-project:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      account_id: ${{ steps.create-project.outputs.account_id }}
+      root_email: ${{ steps.create-project.outputs.root_email }}
+      preview_role_arn: ${{ steps.create-project.outputs.preview_role_arn }}
+      production_role_arn: ${{ steps.create-project.outputs.production_role_arn }}
+      repository_url: ${{ steps.create-project.outputs.repository_url }}
+      files_created: ${{ steps.create-project.outputs.files_created }}
+      files_updated: ${{ steps.create-project.outputs.files_updated }}
+      files_ignored: ${{ steps.create-project.outputs.files_ignored }}
+      build_validation: ${{ steps.create-project.outputs.build_validation }}
+      status: ${{ steps.create-project.outputs.status }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: yarn
+      - run: corepack enable && yarn install --frozen-lockfile
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ACCOUNT_FACTORY_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+      - id: create-project
+        run: yarn create-project
+        env:
+          PROJECT_NAME: ${{ inputs.project_name }}
+          APP_TYPE: ${{ inputs.app_type }}
+          CUSTOM_DOMAIN: ${{ inputs.custom_domain }}
+          AWS_REGION: ${{ inputs.aws_region }}
+          NODE_VERSION: ${{ inputs.node_version }}
+          ACCOUNT_FACTORY_GITHUB_TOKEN: ${{ secrets.ACCOUNT_FACTORY_GITHUB_TOKEN }}
