@@ -24,6 +24,29 @@ El bootstrap crea o actualiza `account-factory-github-bootstrap` en la cuenta de
 
 Después, ejecuta **Actions → Create project → Run workflow** desde `main`. CloudShell usa las credenciales de la sesión autenticada; no hace falta configurar un perfil local ni access keys.
 
+### Troubleshooting bootstrap OIDC authentication
+
+If `aws-actions/configure-aws-credentials` fails with `Could not assume role with OIDC: Not authorized to perform sts:AssumeRoleWithWebIdentity`, project creation has not started. AWS rejected the bootstrap role assumption; the error alone does not identify which live IAM setting is wrong. The workflow already requests `id-token: write`.
+
+In an authenticated management-account CloudShell session, inspect the deployed role and provider:
+
+```sh
+aws sts get-caller-identity --query Account --output text
+aws iam get-role --role-name account-factory-github-bootstrap \
+  --query 'Role.{Arn:Arn,Trust:AssumeRolePolicyDocument}'
+aws iam get-open-id-connect-provider \
+  --open-id-connect-provider-arn arn:aws:iam::191926569765:oidc-provider/token.actions.githubusercontent.com
+```
+
+Verify that the account is `191926569765`, `AWS_ACCOUNT_FACTORY_ROLE_ARN` matches the returned role ARN, and the role trusts that OIDC provider for `sts:AssumeRoleWithWebIdentity` with these exact conditions:
+
+- `token.actions.githubusercontent.com:aud`: `sts.amazonaws.com`
+- `token.actions.githubusercontent.com:sub`: `repo:on-the-edge-cloud/account-factory:ref:refs/heads/main`
+
+The provider's `ClientIDList` must include `sts.amazonaws.com`. If the role is missing or its trust policy differs, run the current `create-account-factory-bootstrap.sh` in that session. It creates a missing role or updates an existing role's trust policy; it first verifies the account and provider audience. Correct any provider validation error before rerunning it, then set the repository variable to the printed ARN and run **Create project** from `main` again.
+
+This repair must be applied in AWS; merging repository changes or retrying the unchanged job does not update IAM. Do not remove the subject condition, replace it with a wildcard, or add static AWS keys. If the deployed policy already matches, check whether organization/repository OIDC subject customization changes the issued `sub`, and whether AWS organization policies explicitly deny the assumption.
+
 ## Create a project
 
 Run **Actions > Create project > Run workflow** from `main`. Inputs include the kebab-case project name, `static` or `ssr`, optional custom domain, AWS region, and Node version. Root emails use `fmoreno+<project_name>@ontheedge.cloud`.
