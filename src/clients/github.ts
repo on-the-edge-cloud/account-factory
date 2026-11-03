@@ -1,4 +1,5 @@
 import { Octokit } from "@octokit/rest";
+import sodium from "libsodium-wrappers";
 
 const owner = "on-the-edge-cloud";
 
@@ -16,6 +17,12 @@ export interface RepositoryCommitResult {
   repositoryUrl: string;
   branch: string;
   commitSha: string;
+}
+
+export interface ProjectRepositorySecrets {
+  previewRoleArn: string;
+  productionRoleArn: string;
+  cloudflareApiToken?: string;
 }
 
 export async function inspectProjectRepository(
@@ -189,6 +196,140 @@ export async function commitProjectFiles(
     branch,
     commitSha: commit.data.sha,
   };
+}
+
+export async function configureProjectRepository(
+  token: string,
+  projectName: string,
+  secrets: ProjectRepositorySecrets,
+): Promise<void> {
+  const octokit = new Octokit({ auth: token });
+  const environmentName = "production";
+
+  await octokit.repos.createOrUpdateEnvironment({
+    owner,
+    repo: projectName,
+    environment_name: environmentName,
+    reviewers: [],
+    deployment_branch_policy: {
+      protected_branches: false,
+      custom_branch_policies: true,
+    },
+  });
+
+  const policies = await octokit.repos.listDeploymentBranchPolicies({
+    owner,
+    repo: projectName,
+    environment_name: environmentName,
+  });
+  for (const policy of policies.data.branch_policies) {
+    if (policy.id === undefined) {
+      throw new Error(
+        `GitHub returned a production branch policy without an ID for ${projectName}.`,
+      );
+    }
+    await octokit.repos.deleteDeploymentBranchPolicy({
+      owner,
+      repo: projectName,
+      environment_name: environmentName,
+      branch_policy_id: policy.id,
+    });
+  }
+  await octokit.repos.createDeploymentBranchPolicy({
+    owner,
+    repo: projectName,
+    environment_name: environmentName,
+    name: "main",
+    type: "branch",
+  });
+
+  await setRepositorySecret(
+    octokit,
+    projectName,
+    "AWS_ROLE_ARN",
+    secrets.previewRoleArn,
+  );
+  await setEnvironmentSecret(
+    octokit,
+    projectName,
+    environmentName,
+    "AWS_ROLE_ARN",
+    secrets.productionRoleArn,
+  );
+  if (secrets.cloudflareApiToken) {
+    await setEnvironmentSecret(
+      octokit,
+      projectName,
+      environmentName,
+      "CLOUDFLARE_API_TOKEN",
+      secrets.cloudflareApiToken,
+    );
+  }
+}
+
+async function encryptGitHubSecret(
+  publicKey: string,
+  secretValue: string,
+): Promise<string> {
+  await sodium.ready;
+  const binaryKey = sodium.from_base64(
+    publicKey,
+    sodium.base64_variants.ORIGINAL,
+  );
+  const encrypted = sodium.crypto_box_seal(
+    sodium.from_string(secretValue),
+    binaryKey,
+  );
+  return sodium.to_base64(encrypted, sodium.base64_variants.ORIGINAL);
+}
+
+async function setRepositorySecret(
+  octokit: Octokit,
+  projectName: string,
+  secretName: string,
+  secretValue: string,
+): Promise<void> {
+  const { data: publicKey } = await octokit.actions.getRepoPublicKey({
+    owner,
+    repo: projectName,
+  });
+  if (!publicKey.key || !publicKey.key_id)
+    throw new Error(`GitHub did not return a repository secret key.`);
+  const encryptedValue = await encryptGitHubSecret(publicKey.key, secretValue);
+  await octokit.actions.createOrUpdateRepoSecret({
+    owner,
+    repo: projectName,
+    secret_name: secretName,
+    encrypted_value: encryptedValue,
+    key_id: publicKey.key_id,
+  });
+}
+
+async function setEnvironmentSecret(
+  octokit: Octokit,
+  projectName: string,
+  environmentName: string,
+  secretName: string,
+  secretValue: string,
+): Promise<void> {
+  const { data: publicKey } = await octokit.actions.getEnvironmentPublicKey({
+    owner,
+    repo: projectName,
+    environment_name: environmentName,
+  });
+  if (!publicKey.key || !publicKey.key_id)
+    throw new Error(
+      `GitHub did not return a public key for the ${environmentName} environment.`,
+    );
+  const encryptedValue = await encryptGitHubSecret(publicKey.key, secretValue);
+  await octokit.actions.createOrUpdateEnvironmentSecret({
+    owner,
+    repo: projectName,
+    environment_name: environmentName,
+    secret_name: secretName,
+    encrypted_value: encryptedValue,
+    key_id: publicKey.key_id,
+  });
 }
 
 async function readRepositoryFile(

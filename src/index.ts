@@ -17,7 +17,10 @@ async function main() {
   if (!githubToken)
     throw new Error("ACCOUNT_FACTORY_GITHUB_TOKEN is required.");
 
-  const result = await createProject(input, githubToken);
+  const result = await createProject(input, {
+    githubToken,
+    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN,
+  });
   for (const [key, value] of Object.entries(result)) {
     const outputName = key.replace(
       /[A-Z]/g,

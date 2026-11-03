@@ -49,7 +49,7 @@ describe("project provisioning order", () => {
             awsRegion: "eu-west-1",
             nodeVersion: "22",
           },
-          "test-github-token",
+          { githubToken: "test-github-token" },
           dependencies,
         ),
       ).rejects.toThrow("build failed");

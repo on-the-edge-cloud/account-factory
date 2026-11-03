@@ -4,9 +4,11 @@ import { createAccount, type AccountResult } from "../clients/organizations.js";
 import { configureProjectRoles, type RoleNames } from "../clients/iam.js";
 import {
   commitProjectFiles,
+  configureProjectRepository,
   inspectProjectRepository,
   type RepositoryCommitResult,
   type RepositorySnapshot,
+  type ProjectRepositorySecrets,
 } from "../clients/github.js";
 import {
   accountEmail,
@@ -35,6 +37,12 @@ export interface CreateProjectDependencies {
   ) => Promise<AccountResult>;
   configureRoles: typeof configureProjectRoles;
   commitFiles: typeof commitProjectFiles;
+  configureRepository: typeof configureProjectRepository;
+}
+
+export interface ProjectCredentials {
+  githubToken: string;
+  cloudflareApiToken?: string;
 }
 
 const defaultDependencies: CreateProjectDependencies = {
@@ -44,14 +52,21 @@ const defaultDependencies: CreateProjectDependencies = {
   createAccount,
   configureRoles: configureProjectRoles,
   commitFiles: commitProjectFiles,
+  configureRepository: configureProjectRepository,
 };
 
 export async function createProject(
   input: ProjectInput,
-  githubToken: string,
+  credentials: ProjectCredentials,
   dependencies: CreateProjectDependencies = defaultDependencies,
 ) {
   validateProjectInput(input);
+  if (input.customDomain && !credentials.cloudflareApiToken) {
+    throw new Error(
+      "CLOUDFLARE_API_TOKEN is required when a custom domain is configured.",
+    );
+  }
+  const { githubToken } = credentials;
   let repository: RepositorySnapshot;
   let buildInfo: ExistingProjectBuildInfo;
   let fileOptions: ProjectFileOptions;
@@ -106,11 +121,23 @@ export async function createProject(
     repository,
     plan.files,
   );
+  const repositorySecrets: ProjectRepositorySecrets = {
+    previewRoleArn: `arn:aws:iam::${account.accountId}:role/${roles.preview}`,
+    productionRoleArn: `arn:aws:iam::${account.accountId}:role/${roles.production}`,
+    ...(input.customDomain
+      ? { cloudflareApiToken: credentials.cloudflareApiToken }
+      : {}),
+  };
+  await dependencies.configureRepository(
+    githubToken,
+    input.projectName,
+    repositorySecrets,
+  );
   return {
     accountId: account.accountId,
     rootEmail: email,
-    previewRoleArn: `arn:aws:iam::${account.accountId}:role/${roles.preview}`,
-    productionRoleArn: `arn:aws:iam::${account.accountId}:role/${roles.production}`,
+    previewRoleArn: repositorySecrets.previewRoleArn,
+    productionRoleArn: repositorySecrets.productionRoleArn,
     repositoryUrl: committed.repositoryUrl,
     filesCreated: plan.created,
     filesUpdated: plan.updated,
@@ -127,7 +154,8 @@ function suspendWorkflowCredentials(): () => void {
       key.startsWith("ACTIONS_") ||
       key === "GITHUB_TOKEN" ||
       key === "GH_TOKEN" ||
-      key === "ACCOUNT_FACTORY_GITHUB_TOKEN"
+      key === "ACCOUNT_FACTORY_GITHUB_TOKEN" ||
+      key === "CLOUDFLARE_API_TOKEN"
     ) {
       const value = process.env[key];
       if (value !== undefined) saved[key] = value;
