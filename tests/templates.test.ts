@@ -63,7 +63,7 @@ describe("generated project files", () => {
     expect(deployOn.push.branches).toEqual(["main"]);
     expect(deployOn.workflow_dispatch).toBeDefined();
     expect(deploy.jobs.production.uses).toBe(
-      "on-the-edge-cloud/github-actions-nextjs/.github/workflows/nextjs-production.yml@v1.13",
+      "on-the-edge-cloud/github-actions-nextjs/.github/workflows/nextjs-production.yml@v1.20",
     );
     expect(deploy.jobs.production.with["config-path"]).toBe("nextjs-app.yml");
     expect(previewOn.pull_request.types).toEqual([
@@ -76,7 +76,7 @@ describe("generated project files", () => {
       "github.event.pull_request.head.repo.full_name == github.repository",
     );
     expect(preview.jobs.preview.uses).toBe(
-      "on-the-edge-cloud/github-actions-nextjs/.github/workflows/nextjs-preview.yml@v1.13",
+      "on-the-edge-cloud/github-actions-nextjs/.github/workflows/nextjs-preview.yml@v1.20",
     );
     expect(preview.jobs.preview.with["config-path"]).toBe("nextjs-app.yml");
     expect(preview.jobs.preview.with.command).toBe(

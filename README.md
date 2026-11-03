@@ -8,7 +8,19 @@ The factory does not deploy application resources. Project repositories own thei
 
 Set the repository variable `AWS_ACCOUNT_FACTORY_ROLE_ARN` to the management-account role ARN. It must be assumable through GitHub Actions OIDC and allow `organizations:CreateAccount`, `organizations:DescribeCreateAccountStatus`, `organizations:TagResource`, `organizations:DescribeOrganization`, and `sts:AssumeRole` on `OrganizationAccountAccessRole` in newly created accounts. Static AWS access keys are not used.
 
-Configure the GitHub App used by the factory with repository permissions `Administration: read/write`, `Secrets: read/write`, `Contents: read/write`, `Workflows: read/write`, and `Metadata: read`. Install it on all current and future repositories in `on-the-edge-cloud`. In `on-the-edge-cloud/account-factory`, set the Actions variable `ACCOUNT_FACTORY_APP_CLIENT_ID` to the App's Client ID and the Actions secret `ACCOUNT_FACTORY_APP_PRIVATE_KEY` to its private key PEM. The workflow creates a short-lived installation token for each run; do not save that token as a repository secret.
+Configure the GitHub App used by the factory with these repository permissions:
+
+| Permission     | Access         | Purpose                                                                                   |
+| -------------- | -------------- | ----------------------------------------------------------------------------------------- |
+| Administration | Read and write | Create repositories, configure environments, and create/delete deployment branch policies |
+| Actions        | Read-only      | List deployment branch policies                                                           |
+| Secrets        | Read and write | Read repository public keys and write repository secrets                                  |
+| Environments   | Read and write | Read environment public keys and write environment secrets                                |
+| Contents       | Read and write | Inspect repositories and commit project files                                             |
+| Workflows      | Read and write | Write caller workflows                                                                    |
+| Metadata       | Read-only      | Read repository metadata                                                                  |
+
+After changing App permissions, approve the update on the organization installation so newly generated tokens receive them. Install it on all current and future repositories in `on-the-edge-cloud`. In `on-the-edge-cloud/account-factory`, set the Actions variable `ACCOUNT_FACTORY_APP_CLIENT_ID` to the App's Client ID and the Actions secret `ACCOUNT_FACTORY_APP_PRIVATE_KEY` to its private key PEM. The workflow creates a short-lived installation token for each run; do not save that token as a repository secret.
 
 If you plan to use custom domains, configure the organization secret `CLOUDFLARE_API_TOKEN` for `on-the-edge-cloud` and grant the `account-factory` repository access to it. The workflow passes it to the factory, which copies it into the new project's `production` environment only when a custom domain is requested.
 
@@ -37,6 +49,8 @@ For an existing repo, application files are not overwritten. The standard `previ
 ## Project manifest and workflows
 
 `nextjs-app.yml` follows the shared action's `app` config contract: slug, directory, Node version, AWS region, deployment type, and optional domain. The workflows call the shared production and preview reusable workflows, passing this config path; they are the same for static and SSR projects.
+
+Generated callers use `github-actions-nextjs@v1.20`, which detects Yarn/npm and selects the corresponding lockfile for dependency caching and installation. New projects use Yarn and include `yarn.lock`. Existing projects generated with `v1.13` must update both caller workflow references to `v1.20`; rerun the deployment workflow, not account creation.
 
 The factory configures GitHub Actions automatically: it sets the repository secret `AWS_ROLE_ARN` to the preview role ARN, creates the `production` environment restricted to the `main` branch, and sets its `AWS_ROLE_ARN` secret to the production role ARN. The environment request omits reviewer settings to avoid requesting a protection rule unsupported by some billing plans; existing reviewer rules are left unchanged. Private repositories still require a GitHub plan that supports environments and deployment branch policies. When a custom domain is requested, it also sets `CLOUDFLARE_API_TOKEN` in the production environment. The reusable workflows inherit these secrets and use GitHub OIDC.
 

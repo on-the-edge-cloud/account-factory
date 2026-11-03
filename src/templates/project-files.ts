@@ -99,7 +99,7 @@ permissions:
 
 jobs:
   production:
-    uses: on-the-edge-cloud/github-actions-nextjs/.github/workflows/nextjs-production.yml@v1.13
+    uses: on-the-edge-cloud/github-actions-nextjs/.github/workflows/nextjs-production.yml@v1.20
     with:
       config-path: nextjs-app.yml
     secrets: inherit
@@ -119,7 +119,7 @@ permissions:
 jobs:
   preview:
     if: github.event.pull_request.head.repo.full_name == github.repository
-    uses: on-the-edge-cloud/github-actions-nextjs/.github/workflows/nextjs-preview.yml@v1.13
+    uses: on-the-edge-cloud/github-actions-nextjs/.github/workflows/nextjs-preview.yml@v1.20
     with:
       config-path: nextjs-app.yml
       command: \${{ github.event.action == 'closed' && 'destroy' || 'deploy' }}
