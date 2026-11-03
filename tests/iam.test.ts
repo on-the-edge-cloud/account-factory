@@ -3,7 +3,6 @@ import {
   deploymentPolicy,
   roleNames,
   roleTrustPolicy,
-  runtimeBoundaryPolicy,
 } from "../src/clients/iam.js";
 import { organizationsError } from "../src/clients/organizations.js";
 
@@ -16,23 +15,47 @@ describe("IAM role configuration", () => {
     expect(() => roleNames("a".repeat(39))).toThrow(/maximum 38/);
   });
 
-  it("requires a permissions boundary when creating project roles", () => {
+  it("grants Terraform state access only to this repository's state prefix", () => {
+    const policy = deploymentPolicy("123456789012", "storefront", "ssr") as {
+      Statement: Array<{
+        Action: string[];
+        Resource: string | string[];
+        Condition?: { StringLike?: Record<string, string[]> };
+      }>;
+    };
+    const stateList = policy.Statement.find((statement) =>
+      statement.Action.includes("s3:ListBucket"),
+    );
+    const stateObjects = policy.Statement.find((statement) =>
+      statement.Action.includes("s3:GetObject"),
+    );
+
+    expect(stateList?.Resource).toBe(
+      "arn:aws:s3:::on-the-edge-terraform-state",
+    );
+    expect(stateList?.Condition?.StringLike?.["s3:prefix"]).toEqual([
+      "nextjs/on-the-edge-cloud/storefront/*",
+    ]);
+    expect(stateObjects?.Resource).toBe(
+      "arn:aws:s3:::on-the-edge-terraform-state/nextjs/on-the-edge-cloud/storefront/*",
+    );
+  });
+
+  it("grants SSR Terraform permissions to resources named with the manifest slug", () => {
     const policy = deploymentPolicy("123456789012", "storefront", "ssr") as {
       Statement: Array<{
         Action: string[];
         Resource?: string;
-        Condition?: {
-          ArnEquals?: Record<string, string>;
-          StringEquals?: Record<string, string>;
-        };
+        Condition?: { StringEquals?: Record<string, string> };
       }>;
     };
     const createRole = policy.Statement.find((statement) =>
       statement.Action.includes("iam:CreateRole"),
     );
-    expect(createRole?.Condition?.ArnEquals?.["iam:PermissionsBoundary"]).toBe(
-      "arn:aws:iam::123456789012:policy/storefront-runtime-boundary",
+    expect(createRole?.Resource).toBe(
+      "arn:aws:iam::123456789012:role/storefront*",
     );
+    expect(createRole?.Condition).toBeUndefined();
     expect(
       policy.Statement.some((statement) =>
         statement.Action.includes("lambda:CreateFunction"),
@@ -42,7 +65,7 @@ describe("IAM role configuration", () => {
       statement.Action.includes("iam:PassRole"),
     );
     expect(passRole?.Resource).toBe(
-      "arn:aws:iam::123456789012:role/storefront-*",
+      "arn:aws:iam::123456789012:role/storefront*",
     );
     expect(passRole?.Condition?.StringEquals?.["iam:PassedToService"]).toBe(
       "lambda.amazonaws.com",
@@ -65,7 +88,7 @@ describe("IAM role configuration", () => {
     ).toBe(false);
   });
 
-  it("adds ACM and Route 53 access only when a custom domain is configured", () => {
+  it("adds ACM access only when a custom domain is configured", () => {
     const withoutDomain = deploymentPolicy(
       "123456789012",
       "storefront",
@@ -92,9 +115,9 @@ describe("IAM role configuration", () => {
     ).toBe(true);
     expect(
       withDomain.Statement.some((statement) =>
-        statement.Action.includes("route53:ChangeResourceRecordSets"),
+        statement.Action.some((action) => action.startsWith("route53:")),
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("uses the exact organization-wide OIDC subjects for both roles", () => {
@@ -130,31 +153,23 @@ describe("IAM role configuration", () => {
     ).toBe("sts.amazonaws.com");
   });
 
-  it("limits runtime roles to app logs and app-owned buckets", () => {
-    const policy = runtimeBoundaryPolicy("123456789012", "storefront") as {
-      Statement: Array<{ Action: string[]; Resource: string }>;
-    };
-    expect(
-      policy.Statement.every((statement) => statement.Resource !== "*"),
-    ).toBe(true);
-    expect(
-      policy.Statement.some((statement) =>
-        statement.Resource.includes("storefront-*"),
-      ),
-    ).toBe(true);
-    expect(
-      policy.Statement.some((statement) =>
-        statement.Action.includes("iam:CreateRole"),
-      ),
-    ).toBe(false);
-    expect(
-      policy.Statement.some((statement) =>
-        statement.Action.some(
-          (action) =>
-            action.startsWith("sqs:") || action.startsWith("dynamodb:"),
-        ),
-      ),
-    ).toBe(false);
+  it("uses Terraform provider permissions instead of legacy deployment APIs", () => {
+    const policy = deploymentPolicy(
+      "123456789012",
+      "storefront",
+      "ssr",
+      "app.example.com",
+    ) as { Statement: Array<{ Action: string[] }> };
+    const actions = policy.Statement.flatMap((statement) => statement.Action);
+
+    expect(actions.some((action) => action.startsWith("cloudformation:"))).toBe(
+      false,
+    );
+    expect(actions.some((action) => action.startsWith("route53:"))).toBe(false);
+    expect(actions).toContain("dynamodb:CreateTable");
+    expect(actions).toContain("sqs:CreateQueue");
+    expect(actions).toContain("cloudfront:CreateDistribution");
+    expect(actions).toContain("acm:RequestCertificate");
   });
 });
 

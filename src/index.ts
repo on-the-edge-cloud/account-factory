@@ -49,7 +49,6 @@ async function main() {
         `| Repository | ${result.repositoryUrl} |`,
         `| Files created | ${result.filesCreated.join(", ") || "None"} |`,
         `| Files updated | ${result.filesUpdated.join(", ") || "None"} |`,
-        `| Files ignored | ${result.filesIgnored.join(", ") || "None"} |`,
         `| Build validation | ${result.buildValidation} |`,
         `| Status | ${result.status} |`,
         "",

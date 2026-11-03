@@ -1,24 +1,26 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { isUtf8 } from "node:buffer";
+import {
+  chmod,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parse } from "yaml";
-import { projectFiles } from "../templates/project-files.js";
-import { roleNames } from "../clients/iam.js";
 import type { ProjectInput } from "../validation.js";
-import type { PackageManager } from "../templates/project-files.js";
+
+type PackageManager = "yarn" | "npm" | "pnpm";
 
 const execFileAsync = promisify(execFile);
 
 export interface ExistingProjectBuildInfo {
-  packageManager: PackageManager;
-  installCommand: string;
-  scripts: Record<string, string>;
-  previewDeployCommand: string;
-  productionDeployCommand: string;
-  previewRemoveCommand: string;
   yarnLock: string;
+  applicationFiles?: Record<string, string>;
 }
 
 export async function validateNewProject(
@@ -26,36 +28,66 @@ export async function validateNewProject(
 ): Promise<ExistingProjectBuildInfo> {
   const tempDirectory = await mkdtemp(join(tmpdir(), "account-factory-new-"));
   try {
-    const files = projectFiles(
-      input,
-      "123456789012",
-      roleNames(input.projectName),
+    const projectDirectory = join(tempDirectory, input.projectName);
+    const scaffold = [
+      "--yes",
+      "create-next-app@canary",
+      input.projectName,
+      "--yes",
+      "--use-yarn",
+      "--skip-install",
+      ...(input.appType === "static"
+        ? ["--example", "with-static-export"]
+        : ["--ts", "--eslint", "--tailwind", "--app", "--no-agents-md"]),
+    ];
+    await run("npx", scaffold, tempDirectory);
+
+    const packageJsonPath = join(projectDirectory, "package.json");
+    const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8")) as {
+      scripts: Record<string, string>;
+      dependencies: Record<string, string>;
+    };
+    packageJson.dependencies.next = "latest";
+    await writeFile(
+      packageJsonPath,
+      `${JSON.stringify(packageJson, null, 2)}\n`,
     );
-    for (const [path, content] of Object.entries(files)) {
-      const target = join(tempDirectory, path);
-      const { mkdir } = await import("node:fs/promises");
-      await mkdir(join(target, ".."), { recursive: true });
-      await writeFile(target, content);
-    }
-    await installDependencies("yarn", false, tempDirectory);
-    for (const script of ["lint", "typecheck", "build"])
-      await runScript("yarn", script, tempDirectory);
+
+    await installDependencies("yarn", false, projectDirectory);
+    await runScript("yarn", "build", projectDirectory);
+    const applicationFiles = await collectApplicationFiles(projectDirectory);
     return {
-      packageManager: "yarn",
-      installCommand: "corepack enable && yarn install --frozen-lockfile",
-      scripts: {
-        build: "yarn build",
-        lint: "yarn lint",
-        typecheck: "yarn typecheck",
-      },
-      previewDeployCommand: "yarn sst deploy --stage preview-$PR_NUMBER",
-      productionDeployCommand: "yarn sst deploy --stage production",
-      previewRemoveCommand: "yarn sst remove --stage preview-$PR_NUMBER",
-      yarnLock: await readFile(join(tempDirectory, "yarn.lock"), "utf8"),
+      yarnLock: await readFile(join(projectDirectory, "yarn.lock"), "utf8"),
+      applicationFiles,
     };
   } finally {
     await rm(tempDirectory, { recursive: true, force: true });
   }
+}
+
+async function collectApplicationFiles(
+  root: string,
+): Promise<Record<string, string>> {
+  const files: Record<string, string> = {};
+  const collect = async (directory: string, prefix = "") => {
+    for (const entry of await readdir(directory)) {
+      if ([".git", ".next", "node_modules", "out", "coverage"].includes(entry))
+        continue;
+      const path = prefix ? `${prefix}/${entry}` : entry;
+      const absolutePath = join(directory, entry);
+      if ((await stat(absolutePath)).isDirectory()) {
+        await collect(absolutePath, path);
+        continue;
+      }
+      if (entry === "favicon.ico" || entry.endsWith(".tsbuildinfo")) continue;
+      const content = await readFile(absolutePath);
+      if (!isUtf8(content))
+        throw new Error(`Generated template file is not UTF-8 text: ${path}`);
+      if (path !== "yarn.lock") files[path] = content.toString("utf8");
+    }
+  };
+  await collect(root);
+  return files;
 }
 
 export function detectPackageManager(
@@ -177,18 +209,6 @@ export async function validateExistingProject(
     };
     await collectPaths(checkoutDirectory);
     const packageManager = detectPackageManager(packageJsonText, paths);
-    const existingConfig = paths.has("nextjs-app.yml")
-      ? (parse(
-          await readFile(join(checkoutDirectory, "nextjs-app.yml"), "utf8"),
-        ) as { app?: { commands?: Record<string, string> } })
-      : undefined;
-    const deploymentCommands = findDeploymentCommands(
-      packageManager,
-      scripts,
-      paths,
-      existingConfig?.app?.commands ?? {},
-    );
-
     const hasLockfile =
       paths.has("yarn.lock") ||
       paths.has("package-lock.json") ||
@@ -200,10 +220,6 @@ export async function validateExistingProject(
     }
 
     return {
-      packageManager,
-      installCommand: installCommand(packageManager, hasLockfile),
-      scripts,
-      ...deploymentCommands,
       yarnLock: "",
     };
   } finally {
@@ -211,87 +227,16 @@ export async function validateExistingProject(
   }
 }
 
-function findDeploymentCommands(
-  packageManager: PackageManager,
-  scripts: Record<string, string>,
-  paths: ReadonlySet<string>,
-  existingCommands: Record<string, string>,
-): Pick<
-  ExistingProjectBuildInfo,
-  "previewDeployCommand" | "productionDeployCommand" | "previewRemoveCommand"
-> {
-  const run = packageManager === "npm" ? "npm run" : `${packageManager} run`;
-  if (
-    existingCommands["preview-deploy"] &&
-    existingCommands["production-deploy"]
-  ) {
-    return {
-      previewDeployCommand: existingCommands["preview-deploy"],
-      productionDeployCommand: existingCommands["production-deploy"],
-      previewRemoveCommand: existingCommands["preview-remove"] ?? "",
-    };
-  }
-  if (scripts["deploy:preview"] && scripts["deploy:production"]) {
-    return {
-      previewDeployCommand: `${run} deploy:preview`,
-      productionDeployCommand: `${run} deploy:production`,
-      previewRemoveCommand: scripts["remove:preview"]
-        ? `${run} remove:preview`
-        : "",
-    };
-  }
-  if (
-    paths.has("sst.config.ts") ||
-    paths.has("sst.config.mjs") ||
-    paths.has("sst.config.js")
-  ) {
-    return {
-      previewDeployCommand: `${packageManager} sst deploy --stage preview-$PR_NUMBER`,
-      productionDeployCommand: `${packageManager} sst deploy --stage production`,
-      previewRemoveCommand: `${packageManager} sst remove --stage preview-$PR_NUMBER`,
-    };
-  }
-  throw new Error(
-    "The existing project has no deploy:preview/deploy:production scripts or SST config; no AWS account was created.",
-  );
-}
-
 async function installDependencies(
   manager: PackageManager,
   hasLockfile: boolean,
   cwd: string,
 ): Promise<void> {
-  if (manager === "npm") {
-    await run(
-      "npm",
-      [hasLockfile ? "ci" : "install"],
-      cwd,
-      sanitizedEnvironment(),
-    );
-    return;
-  }
-  if (manager === "yarn") {
-    await run(
-      "corepack",
-      ["yarn", "install", ...(hasLockfile ? ["--frozen-lockfile"] : [])],
-      cwd,
-      sanitizedEnvironment(),
-    );
-    return;
-  }
-  await run(
-    "corepack",
-    ["pnpm", "install", ...(hasLockfile ? ["--frozen-lockfile"] : [])],
-    cwd,
-    sanitizedEnvironment(),
-  );
-}
-
-function installCommand(manager: PackageManager, hasLockfile: boolean): string {
-  if (manager === "npm") return hasLockfile ? "npm ci" : "npm install";
-  if (manager === "yarn")
-    return `corepack enable && yarn install${hasLockfile ? " --frozen-lockfile" : ""}`;
-  return `corepack enable && pnpm install${hasLockfile ? " --frozen-lockfile" : ""}`;
+  const args =
+    manager === "npm"
+      ? [hasLockfile ? "ci" : "install"]
+      : ["install", ...(hasLockfile ? ["--frozen-lockfile"] : [])];
+  await runPackageManager(manager, args, cwd);
 }
 
 async function runScript(
@@ -299,9 +244,16 @@ async function runScript(
   script: string,
   cwd: string,
 ): Promise<void> {
+  await runPackageManager(manager, ["run", script], cwd);
+}
+
+async function runPackageManager(
+  manager: PackageManager,
+  args: string[],
+  cwd: string,
+): Promise<void> {
   const command = manager === "npm" ? "npm" : "corepack";
-  const args = manager === "npm" ? ["run", script] : [manager, "run", script];
-  await run(command, args, cwd, sanitizedEnvironment());
+  await run(command, manager === "npm" ? args : [manager, ...args], cwd);
 }
 
 function sanitizedEnvironment(): NodeJS.ProcessEnv {
@@ -322,7 +274,7 @@ async function run(
   command: string,
   args: string[],
   cwd: string,
-  env: NodeJS.ProcessEnv,
+  env = sanitizedEnvironment(),
 ): Promise<void> {
   try {
     await execFileAsync(command, args, {

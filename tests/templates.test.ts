@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
-import { roleNames } from "../src/clients/iam.js";
 import {
   planProjectFiles,
   projectFiles,
@@ -15,181 +14,118 @@ const input = {
 };
 
 describe("generated project files", () => {
-  it("includes the deployment workflows, descriptor, and SST app", () => {
-    const files = projectFiles(
-      input,
-      "123456789012",
-      roleNames(input.projectName),
-    );
-    expect(Object.keys(files)).toEqual(
-      expect.arrayContaining([
-        ".github/workflows/preview.yml",
-        ".github/workflows/deploy.yml",
-        "nextjs-app.yml",
-        "sst.config.ts",
-      ]),
-    );
+  it("generates the github-actions-nextjs application config", () => {
+    const files = projectFiles(input);
     const config = parse(files["nextjs-app.yml"]);
-    expect(config.app["aws-region"]).toBe("eu-west-1");
-    expect(config.app["deployment-type"]).toBe("ssr");
-    expect(config.app["deployment-strategy"]).toBe(
-      "cloudfront-api-gateway-lambda",
-    );
-    expect(config.app.domain).toBeNull();
-    expect(config.app["domain-provider"]).toBeNull();
-    expect(files["sst.config.ts"]).toContain("sst.aws.Nextjs");
-    expect(files["sst.config.ts"]).toContain(
-      'permissionsBoundary: "arn:aws:iam::123456789012:policy/storefront-runtime-boundary"',
-    );
-    expect(files[".github/workflows/deploy.yml"]).toContain(
-      'app.fetch("production-role-arn")',
-    );
-  });
 
-  it("generates static hosting without adding app resources to the factory", () => {
-    const files = projectFiles(
-      { ...input, appType: "static" },
-      "123456789012",
-      roleNames(input.projectName),
-    );
-    expect(files["sst.config.ts"]).toContain("sst.aws.StaticSite");
-    expect(files[".github/workflows/preview.yml"]).toContain(
-      'commands["preview-deploy"]',
-    );
-    expect(files["next.config.ts"]).toContain('output: "export"');
-    expect(files[".github/workflows/preview.yml"]).toContain(
-      'app.fetch("aws-region")',
-    );
-    expect(files[".github/workflows/preview.yml"]).toContain(
-      "steps.app-config.outputs.deployment_strategy",
-    );
-    expect(files[".github/workflows/preview.yml"]).toContain(
-      "typecheck_command",
-    );
-    expect(files[".github/workflows/preview.yml"]).not.toContain(
-      "environment: preview",
-    );
-  });
-
-  it("adds ACM and Route 53 metadata when a domain is configured", () => {
-    const files = projectFiles(
-      { ...input, customDomain: "app.example.com" },
-      "123456789012",
-      roleNames(input.projectName),
-    );
-    const config = parse(files["nextjs-app.yml"]);
-    expect(config.app.domain).toBe("app.example.com");
-    expect(config.app["domain-provider"]).toEqual({
-      certificate: "acm",
-      dns: "route53",
-    });
-  });
-
-  it("preserves unknown keys when merging an existing manifest", () => {
-    const existingManifest = [
-      "service: legacy-service",
-      "app:",
-      "  domain: keep.example.com",
-      "  custom-setting: keep-me",
-      "  commands:",
-      "    custom-deploy: deploy.sh",
-      "",
-    ].join("\n");
-    const plan = planProjectFiles(
-      input,
-      "123456789012",
-      roleNames(input.projectName),
-      {
-        existing: true,
-        existingPaths: new Set(["nextjs-app.yml"]),
-        existingManifest,
-        packageManager: "npm",
-        installCommand: "npm install",
-        scripts: { build: "next build" },
-        previewDeployCommand: "npm run deploy:preview",
-        productionDeployCommand: "npm run deploy:production",
+    expect(config).toEqual({
+      app: {
+        slug: "storefront",
+        directory: ".",
+        "node-version": "22",
+        "aws-region": "eu-west-1",
+        "deployment-type": "ssr",
+        domain: "",
       },
-    );
-    const config = parse(plan.files["nextjs-app.yml"]);
-    expect(config.service).toBe("legacy-service");
-    expect(config.app["custom-setting"]).toBe("keep-me");
-    expect(config.app.domain).toBe("keep.example.com");
-    expect(config.app["domain-provider"]).toEqual({
-      certificate: "acm",
-      dns: "route53",
     });
-    expect(config.app.commands["custom-deploy"]).toBe("deploy.sh");
+    expect(files["sst.config.ts"]).toBeUndefined();
   });
 
-  it("restricts production deployments to main", () => {
-    const files = projectFiles(
-      input,
-      "123456789012",
-      roleNames(input.projectName),
+  it("uses the shared static deployment workflow templates for both app types", () => {
+    const ssrFiles = projectFiles(input);
+    const staticFiles = projectFiles({ ...input, appType: "static" });
+
+    expect(staticFiles[".github/workflows/deploy.yml"]).toBe(
+      ssrFiles[".github/workflows/deploy.yml"],
     );
-    expect(files[".github/workflows/deploy.yml"]).toContain("branches: [main]");
-    expect(files[".github/workflows/preview.yml"]).toContain("pull_request:");
-    expect(files["sst.config.ts"]).toContain(
-      'process.env.STAGE === "production"',
+    expect(staticFiles[".github/workflows/preview.yml"]).toBe(
+      ssrFiles[".github/workflows/preview.yml"],
+    );
+    expect(parse(staticFiles["nextjs-app.yml"]).app["deployment-type"]).toBe(
+      "static",
     );
   });
 
-  it("produces valid workflows and passes the preview stage to deployment and cleanup", () => {
-    const files = projectFiles(
-      input,
-      "123456789012",
-      roleNames(input.projectName),
+  it("calls the shared reusable workflows with static caller definitions", () => {
+    const files = projectFiles(input);
+    const workflowFiles = Object.keys(files).filter((path) =>
+      path.startsWith(".github/workflows/"),
     );
     const preview = parse(files[".github/workflows/preview.yml"]);
     const deploy = parse(files[".github/workflows/deploy.yml"]);
     const previewOn = preview.on ?? preview["on"];
     const deployOn = deploy.on ?? deploy["on"];
-    expect(previewOn.pull_request.branches).toContain("main");
-    expect(previewOn.workflow_dispatch).toBeDefined();
-    expect(preview.jobs.deploy.environment).toBeUndefined();
-    expect(deployOn.push.branches).toContain("main");
-    expect(deploy.jobs.deploy.environment).toBe("production");
-    expect(
-      preview.jobs.deploy.steps.some((step: { run?: string }) =>
-        step.run?.includes("APP_COMMAND"),
-      ),
-    ).toBe(true);
-    expect(
-      preview.jobs.deploy.steps.some(
-        (step: { id?: string }) => step.id === "app-config",
-      ),
-    ).toBe(true);
+
+    expect(workflowFiles).toEqual([
+      ".github/workflows/preview.yml",
+      ".github/workflows/deploy.yml",
+    ]);
+    expect(deployOn.push.branches).toEqual(["main"]);
+    expect(deployOn.workflow_dispatch).toBeDefined();
+    expect(deploy.jobs.production.uses).toBe(
+      "on-the-edge-cloud/github-actions-nextjs/.github/workflows/nextjs-production.yml@v1.13",
+    );
+    expect(deploy.jobs.production.with["config-path"]).toBe("nextjs-app.yml");
+    expect(previewOn.pull_request.types).toEqual([
+      "opened",
+      "synchronize",
+      "reopened",
+      "closed",
+    ]);
+    expect(preview.jobs.preview.if).toBe(
+      "github.event.pull_request.head.repo.full_name == github.repository",
+    );
+    expect(preview.jobs.preview.uses).toBe(
+      "on-the-edge-cloud/github-actions-nextjs/.github/workflows/nextjs-preview.yml@v1.13",
+    );
+    expect(preview.jobs.preview.with["config-path"]).toBe("nextjs-app.yml");
+    expect(preview.jobs.preview.with.command).toBe(
+      "${{ github.event.action == 'closed' && 'destroy' || 'deploy' }}",
+    );
+    expect(preview.permissions["pull-requests"]).toBe("write");
   });
 
-  it("preserves conflicting workflows and only plans files missing from an existing repo", () => {
-    const plan = planProjectFiles(
-      input,
-      "123456789012",
-      roleNames(input.projectName),
-      {
-        existing: true,
-        existingPaths: new Set([
-          ".github/workflows/preview.yml",
-          "package.json",
-          "src/app/page.tsx",
-        ]),
-        packageManager: "npm",
-        scripts: { build: "next build" },
-      },
-    );
-    expect(plan.files[".github/workflows/aws-preview.yml"]).toBeDefined();
-    expect(plan.files[".github/workflows/preview.yml"]).toBeUndefined();
-    expect(plan.files["package.json"]).toBeUndefined();
-    expect(plan.files["src/app/page.tsx"]).toBeUndefined();
-    expect(plan.ignored).toContain(".github/workflows/preview.yml");
+  it("preserves app-specific keys and removes unsupported root keys when merging config", () => {
+    const existingManifest = [
+      "service: legacy-service",
+      "app:",
+      "  domain: keep.example.com",
+      "  custom-setting: keep-me",
+      "",
+    ].join("\n");
+    const plan = planProjectFiles(input, {
+      existing: true,
+      existingPaths: new Set(["nextjs-app.yml"]),
+      existingManifest,
+    });
+    const config = parse(plan.files["nextjs-app.yml"]);
+
+    expect(config.service).toBeUndefined();
+    expect(config.app["custom-setting"]).toBe("keep-me");
+    expect(config.app.domain).toBe("keep.example.com");
+    expect(config.app["deployment-type"]).toBe("ssr");
+  });
+
+  it("replaces existing standard workflow files", () => {
+    const plan = planProjectFiles(input, {
+      existing: true,
+      existingPaths: new Set([
+        ".github/workflows/preview.yml",
+        ".github/workflows/deploy.yml",
+      ]),
+    });
+
+    expect(plan.files[".github/workflows/preview.yml"]).toBeDefined();
+    expect(plan.files[".github/workflows/deploy.yml"]).toBeDefined();
+    expect(plan.updated).toEqual([
+      ".github/workflows/preview.yml",
+      ".github/workflows/deploy.yml",
+    ]);
   });
 
   it("reports the GitHub auto-init README as updated for a new repository", () => {
-    const plan = planProjectFiles(
-      input,
-      "123456789012",
-      roleNames(input.projectName),
-    );
+    const plan = planProjectFiles(input);
+
     expect(plan.created).not.toContain("README.md");
     expect(plan.updated).toContain("README.md");
   });

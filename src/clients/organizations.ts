@@ -15,30 +15,26 @@ const sleep = (milliseconds: number) =>
 export function organizationsError(error: unknown): Error {
   const code = (error as { name?: string })?.name ?? "";
   const message = (error as Error)?.message ?? "";
-  if (/EMAIL_ALREADY_EXISTS|already exists/i.test(`${code} ${message}`)) {
-    return new Error(
-      "Ya existe una cuenta AWS con ese email; elige otro nombre de proyecto.",
-    );
-  }
-  if (/INVALID_EMAIL|invalid.*email/i.test(`${code} ${message}`)) {
-    return new Error(
-      "AWS rechazó el email root generado. Verifica fmoreno+<project_name>@ontheedge.cloud.",
-    );
-  }
-  if (/ACCOUNT_LIMIT_EXCEEDED|account limit/i.test(`${code} ${message}`)) {
-    return new Error("Se alcanzó el límite de cuentas de la organización AWS.");
-  }
-  const messages: Record<string, string> = {
-    EMAIL_ALREADY_EXISTS:
-      "Ya existe una cuenta AWS con ese email; elige otro nombre de proyecto.",
-    INVALID_EMAIL:
-      "AWS rechazó el email root generado. Verifica fmoreno+<project_name>@ontheedge.cloud.",
-    ACCOUNT_LIMIT_EXCEEDED:
-      "Se alcanzó el límite de cuentas de la organización AWS.",
-  };
-  return new Error(
-    messages[code] ?? `No se pudo crear la cuenta AWS: ${message || code}`,
-  );
+  const details = `${code} ${message}`;
+  const knownErrors = [
+    {
+      pattern: /EMAIL_ALREADY_EXISTS|already exists/i,
+      message:
+        "Ya existe una cuenta AWS con ese email; elige otro nombre de proyecto.",
+    },
+    {
+      pattern: /INVALID_EMAIL|invalid.*email/i,
+      message:
+        "AWS rechazó el email root generado. Verifica fmoreno+<project_name>@ontheedge.cloud.",
+    },
+    {
+      pattern: /ACCOUNT_LIMIT_EXCEEDED|account limit/i,
+      message: "Se alcanzó el límite de cuentas de la organización AWS.",
+    },
+  ];
+  const knownError = knownErrors.find(({ pattern }) => pattern.test(details));
+  if (knownError) return new Error(knownError.message);
+  return new Error(`No se pudo crear la cuenta AWS: ${message || code}`);
 }
 
 export async function createAccount(

@@ -1,6 +1,5 @@
 import {
   CreateOpenIDConnectProviderCommand,
-  CreatePolicyCommand,
   CreateRoleCommand,
   GetOpenIDConnectProviderCommand,
   IAMClient,
@@ -35,48 +34,26 @@ export function deploymentPolicy(
   appType: AppType,
   customDomain?: string,
 ): object {
-  const common: Array<Record<string, unknown>> = [
+  const slug = projectSlug(projectName);
+  const statePrefix = `nextjs/on-the-edge-cloud/${projectName}/`;
+  const appBucketArn = `arn:aws:s3:::${slug}*`;
+  const appBucketObjectsArn = `${appBucketArn}/*`;
+  const statements: Array<Record<string, unknown>> = [
     {
       Effect: "Allow",
-      Action: [
-        "cloudformation:CreateStack",
-        "cloudformation:UpdateStack",
-        "cloudformation:DeleteStack",
-        "cloudformation:CreateChangeSet",
-        "cloudformation:DeleteChangeSet",
-        "cloudformation:DescribeChangeSet",
-        "cloudformation:ExecuteChangeSet",
-        "cloudformation:DescribeStacks",
-        "cloudformation:DescribeStackEvents",
-        "cloudformation:DescribeStackResources",
-        "cloudformation:ListStackResources",
-        "cloudformation:GetTemplate",
-      ],
-      Resource: [
-        `arn:aws:cloudformation:*:${accountId}:stack/${projectName}-*/*`,
-        `arn:aws:cloudformation:*:${accountId}:changeSet/${projectName}-*/*`,
-      ],
+      Action: ["s3:GetBucketLocation"],
+      Resource: "arn:aws:s3:::on-the-edge-terraform-state",
     },
     {
       Effect: "Allow",
-      Action: ["cloudformation:ListStacks", "cloudformation:ValidateTemplate"],
-      Resource: "*",
+      Action: ["s3:ListBucket"],
+      Resource: "arn:aws:s3:::on-the-edge-terraform-state",
+      Condition: { StringLike: { "s3:prefix": [`${statePrefix}*`] } },
     },
     {
       Effect: "Allow",
-      Action: [
-        "s3:CreateBucket",
-        "s3:GetBucket*",
-        "s3:PutBucket*",
-        "s3:ListBucket",
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-      ],
-      Resource: [
-        `arn:aws:s3:::sst-state-${accountId}-*`,
-        `arn:aws:s3:::sst-state-${accountId}-*/*`,
-      ],
+      Action: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      Resource: `arn:aws:s3:::on-the-edge-terraform-state/${statePrefix}*`,
     },
     {
       Effect: "Allow",
@@ -85,15 +62,17 @@ export function deploymentPolicy(
         "s3:DeleteBucket",
         "s3:GetBucket*",
         "s3:PutBucket*",
+        "s3:DeleteBucket*",
         "s3:ListBucket",
-        "s3:DeleteObject",
-        "s3:GetObject",
+        "s3:ListBucketVersions",
         "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion",
+        "s3:AbortMultipartUpload",
+        "s3:ListMultipartUploadParts",
       ],
-      Resource: [
-        `arn:aws:s3:::${projectName}-*`,
-        `arn:aws:s3:::${projectName}-*/*`,
-      ],
+      Resource: [appBucketArn, appBucketObjectsArn],
     },
     {
       Effect: "Allow",
@@ -106,58 +85,83 @@ export function deploymentPolicy(
         "cloudfront:ListDistributions",
         "cloudfront:CreateInvalidation",
         "cloudfront:GetInvalidation",
-        "cloudfront:ListInvalidations",
+        "cloudfront:CreateOriginAccessControl",
+        "cloudfront:UpdateOriginAccessControl",
+        "cloudfront:DeleteOriginAccessControl",
+        "cloudfront:GetOriginAccessControl",
+        "cloudfront:ListOriginAccessControls",
+        "cloudfront:GetOriginRequestPolicy",
+        "cloudfront:ListOriginRequestPolicies",
+        "cloudfront:CreateFunction",
+        "cloudfront:UpdateFunction",
+        "cloudfront:DeleteFunction",
+        "cloudfront:DescribeFunction",
+        "cloudfront:PublishFunction",
+        "cloudfront:GetFunction",
+        "cloudfront:ListFunctions",
+        "cloudfront:CreateCachePolicy",
+        "cloudfront:UpdateCachePolicy",
+        "cloudfront:DeleteCachePolicy",
+        "cloudfront:GetCachePolicy",
+        "cloudfront:ListCachePolicies",
         "cloudfront:TagResource",
         "cloudfront:UntagResource",
+        "cloudfront:ListTagsForResource",
       ],
       Resource: "*",
     },
     { Effect: "Allow", Action: ["sts:GetCallerIdentity"], Resource: "*" },
   ];
+
+  statements.push({
+    Effect: "Allow",
+    Action: ["iam:CreateServiceLinkedRole"],
+    Resource: "*",
+    Condition: {
+      StringEquals: { "iam:AWSServiceName": "cloudfront.amazonaws.com" },
+    },
+  });
+
   if (appType === "ssr") {
-    common.push(
-      {
-        Effect: "Allow",
-        Action: ["iam:CreateRole"],
-        Resource: `arn:aws:iam::${accountId}:role/${projectName}-*`,
-        Condition: {
-          ArnEquals: {
-            "iam:PermissionsBoundary": `arn:aws:iam::${accountId}:policy/${projectName}-runtime-boundary`,
-          },
-        },
-      },
-      {
-        Effect: "Allow",
-        Action: [
-          "iam:DeleteRole",
-          "iam:GetRole",
-          "iam:TagRole",
-          "iam:UntagRole",
-          "iam:PutRolePolicy",
-          "iam:GetRolePolicy",
-          "iam:DeleteRolePolicy",
-          "iam:AttachRolePolicy",
-          "iam:DetachRolePolicy",
-        ],
-        Resource: `arn:aws:iam::${accountId}:role/${projectName}-*`,
-      },
-      {
-        Effect: "Allow",
-        Action: ["iam:PassRole"],
-        Resource: `arn:aws:iam::${accountId}:role/${projectName}-*`,
-        Condition: {
-          StringEquals: { "iam:PassedToService": "lambda.amazonaws.com" },
-        },
-      },
+    statements.push(
       {
         Effect: "Allow",
         Action: [
           "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:DescribeLogGroups",
+          "logs:DeleteLogGroup",
+          "logs:PutRetentionPolicy",
+          "logs:DeleteRetentionPolicy",
         ],
-        Resource: `arn:aws:logs:*:${accountId}:log-group:/aws/*/${projectName}-*:*`,
+        Resource: `arn:aws:logs:*:${accountId}:log-group:/aws/lambda/${slug}*`,
+      },
+      {
+        Effect: "Allow",
+        Action: ["logs:DescribeLogGroups"],
+        Resource: "*",
+      },
+      {
+        Effect: "Allow",
+        Action: [
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:GetRole",
+          "iam:TagRole",
+          "iam:UntagRole",
+          "iam:ListRoleTags",
+          "iam:ListRolePolicies",
+          "iam:PutRolePolicy",
+          "iam:GetRolePolicy",
+          "iam:DeleteRolePolicy",
+        ],
+        Resource: `arn:aws:iam::${accountId}:role/${slug}*`,
+      },
+      {
+        Effect: "Allow",
+        Action: ["iam:PassRole"],
+        Resource: `arn:aws:iam::${accountId}:role/${slug}*`,
+        Condition: {
+          StringEquals: { "iam:PassedToService": "lambda.amazonaws.com" },
+        },
       },
       {
         Effect: "Allow",
@@ -167,31 +171,65 @@ export function deploymentPolicy(
           "lambda:UpdateFunctionConfiguration",
           "lambda:DeleteFunction",
           "lambda:GetFunction",
+          "lambda:GetFunctionConfiguration",
+          "lambda:GetPolicy",
+          "lambda:ListTags",
           "lambda:AddPermission",
           "lambda:RemovePermission",
           "lambda:TagResource",
           "lambda:UntagResource",
+          "lambda:CreateFunctionUrlConfig",
+          "lambda:UpdateFunctionUrlConfig",
+          "lambda:DeleteFunctionUrlConfig",
+          "lambda:GetFunctionUrlConfig",
+          "lambda:InvokeFunction",
         ],
-        Resource: `arn:aws:lambda:*:${accountId}:function:${projectName}-*`,
+        Resource: `arn:aws:lambda:*:${accountId}:function:${slug}*`,
       },
       {
         Effect: "Allow",
         Action: [
-          "apigateway:GET",
-          "apigateway:POST",
-          "apigateway:PUT",
-          "apigateway:PATCH",
-          "apigateway:DELETE",
+          "lambda:CreateEventSourceMapping",
+          "lambda:DeleteEventSourceMapping",
+          "lambda:GetEventSourceMapping",
+          "lambda:UpdateEventSourceMapping",
+        ],
+        Resource: "*",
+      },
+      {
+        Effect: "Allow",
+        Action: [
+          "dynamodb:CreateTable",
+          "dynamodb:DeleteTable",
+          "dynamodb:DescribeTable",
+          "dynamodb:UpdateTable",
+          "dynamodb:ListTagsOfResource",
+          "dynamodb:TagResource",
+          "dynamodb:UntagResource",
         ],
         Resource: [
-          "arn:aws:apigateway:*::/restapis/*",
-          "arn:aws:apigateway:*::/apis/*",
+          `arn:aws:dynamodb:*:${accountId}:table/${slug}*`,
+          `arn:aws:dynamodb:*:${accountId}:table/${slug}*/index/*`,
         ],
+      },
+      {
+        Effect: "Allow",
+        Action: [
+          "sqs:CreateQueue",
+          "sqs:DeleteQueue",
+          "sqs:GetQueueUrl",
+          "sqs:GetQueueAttributes",
+          "sqs:SetQueueAttributes",
+          "sqs:TagQueue",
+          "sqs:UntagQueue",
+          "sqs:ListQueueTags",
+        ],
+        Resource: `arn:aws:sqs:*:${accountId}:${slug}*`,
       },
     );
   }
   if (customDomain) {
-    common.push(
+    statements.push(
       { Effect: "Allow", Action: ["acm:ListCertificates"], Resource: "*" },
       {
         Effect: "Allow",
@@ -210,34 +248,17 @@ export function deploymentPolicy(
           "acm:DeleteCertificate",
           "acm:AddTagsToCertificate",
           "acm:RemoveTagsFromCertificate",
+          "acm:ListTagsForCertificate",
         ],
         Resource: `arn:aws:acm:us-east-1:${accountId}:certificate/*`,
       },
-      {
-        Effect: "Allow",
-        Action: [
-          "route53:ListHostedZonesByName",
-          "route53:ListHostedZones",
-          "route53:ListResourceRecordSets",
-        ],
-        Resource: "*",
-      },
-      {
-        Effect: "Allow",
-        Action: ["route53:ChangeResourceRecordSets"],
-        Resource: "arn:aws:route53:::hostedzone/*",
-        Condition: {
-          "ForAllValues:StringLike": {
-            "route53:ChangeResourceRecordSetsNormalizedRecordNames": [
-              customDomain,
-              `*.${customDomain}`,
-            ],
-          },
-        },
-      },
     );
   }
-  return { Version: "2012-10-17", Statement: common };
+  return { Version: "2012-10-17", Statement: statements };
+}
+
+function projectSlug(projectName: string): string {
+  return projectName.toLowerCase().slice(0, 24).replace(/-+$/g, "");
 }
 
 export function roleTrustPolicy(
@@ -264,34 +285,6 @@ export function roleTrustPolicy(
       },
     ],
   };
-}
-
-export function runtimeBoundaryPolicy(
-  accountId: string,
-  projectName: string,
-): object {
-  const statements = [
-    {
-      Effect: "Allow",
-      Action: [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents",
-      ],
-      Resource: `arn:aws:logs:*:${accountId}:log-group:/aws/*/${projectName}-*:*`,
-    },
-    {
-      Effect: "Allow",
-      Action: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-      Resource: `arn:aws:s3:::${projectName}-*/*`,
-    },
-    {
-      Effect: "Allow",
-      Action: ["s3:ListBucket", "s3:GetBucketLocation"],
-      Resource: `arn:aws:s3:::${projectName}-*`,
-    },
-  ];
-  return { Version: "2012-10-17", Statement: statements };
 }
 
 async function assumeAccountRole(
@@ -341,26 +334,6 @@ export async function configureProjectRoles(
     throw new Error(
       "Could not create or find the GitHub Actions OIDC provider.",
     );
-
-  if (appType === "ssr") {
-    const boundary = await iam.send(
-      new CreatePolicyCommand({
-        PolicyName: `${projectName}-runtime-boundary`,
-        Description: `Runtime permissions boundary for ${projectName}`,
-        PolicyDocument: JSON.stringify(
-          runtimeBoundaryPolicy(accountId, projectName),
-        ),
-        Tags: [
-          { Key: "Project", Value: projectName },
-          { Key: "ManagedBy", Value: "account-factory" },
-        ],
-      }),
-    );
-    if (!boundary.Policy?.Arn)
-      throw new Error(
-        `Could not create the ${projectName}-runtime-boundary permissions boundary.`,
-      );
-  }
 
   const policies = deploymentPolicy(
     accountId,

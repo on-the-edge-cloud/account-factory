@@ -1,11 +1,7 @@
 import { OrganizationsClient } from "@aws-sdk/client-organizations";
 import { STSClient } from "@aws-sdk/client-sts";
 import { createAccount, type AccountResult } from "../clients/organizations.js";
-import {
-  configureProjectRoles,
-  roleNames,
-  type RoleNames,
-} from "../clients/iam.js";
+import { configureProjectRoles, type RoleNames } from "../clients/iam.js";
 import {
   commitProjectFiles,
   inspectProjectRepository,
@@ -20,6 +16,7 @@ import {
 import {
   planProjectFiles,
   type ProjectFileOptions,
+  type ProjectFilePlan,
 } from "../templates/project-files.js";
 import {
   validateExistingProject,
@@ -55,10 +52,10 @@ export async function createProject(
   dependencies: CreateProjectDependencies = defaultDependencies,
 ) {
   validateProjectInput(input);
-  const names = roleNames(input.projectName);
   let repository: RepositorySnapshot;
   let buildInfo: ExistingProjectBuildInfo;
   let fileOptions: ProjectFileOptions;
+  let plan: ProjectFilePlan;
   const restoreCredentials = suspendWorkflowCredentials();
   try {
     repository = await dependencies.inspectRepository(
@@ -77,15 +74,9 @@ export async function createProject(
       existing: repository.exists,
       existingPaths: repository.paths,
       existingManifest: repository.manifest,
-      packageManager: buildInfo.packageManager,
-      installCommand: buildInfo.installCommand,
-      scripts: buildInfo.scripts,
-      previewDeployCommand: buildInfo.previewDeployCommand,
-      productionDeployCommand: buildInfo.productionDeployCommand,
-      previewRemoveCommand: buildInfo.previewRemoveCommand,
-      branch: repository.branch,
+      applicationFiles: buildInfo.applicationFiles,
     };
-    planProjectFiles(input, "000000000000", names, fileOptions);
+    plan = planProjectFiles(input, fileOptions);
   } finally {
     restoreCredentials();
   }
@@ -105,7 +96,6 @@ export async function createProject(
     input.appType,
     input.customDomain,
   );
-  const plan = planProjectFiles(input, account.accountId, roles, fileOptions);
   if (!repository.exists) {
     plan.files["yarn.lock"] = buildInfo.yarnLock;
     plan.created.push("yarn.lock");
@@ -124,7 +114,6 @@ export async function createProject(
     repositoryUrl: committed.repositoryUrl,
     filesCreated: plan.created,
     filesUpdated: plan.updated,
-    filesIgnored: plan.ignored,
     buildValidation: "PASSED",
     status: "SUCCEEDED",
   };

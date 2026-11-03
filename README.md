@@ -30,15 +30,19 @@ Run **Actions > Create project > Run workflow** from `main`. Inputs include the 
 
 AWS IAM limits role names to 64 characters. With the required `github-actions-<project_name>-production` name, the effective project-name limit is 38 characters even though the general input validation accepts up to 40; the factory rejects names that cannot form both required roles before creating an account.
 
-The workflow reports the account ID, root email, both role ARNs, repository URL, file lists (`created`, `updated`, `ignored`), and final status. New repos receive a TypeScript App Router Next.js/Yarn scaffold. Existing repos are cloned, their package manager and scripts are detected, and lint/tests/typecheck/build scripts are run without AWS/GitHub credentials in the child process. A failed build aborts before account creation or push.
+The workflow reports the account ID, root email, both role ARNs, repository URL, file lists (`created` and `updated`), and final status. New static repos are generated from the [Next.js `with-static-export` example](https://github.com/vercel/next.js/tree/canary/examples/with-static-export); new SSR repos use the [official `create-next-app` template](https://github.com/vercel/next.js/blob/canary/packages/create-next-app/templates/index.ts). The factory adds a manifest and fixed caller workflows for [github-actions-nextjs](https://github.com/on-the-edge-cloud/github-actions-nextjs), then runs the generated build before creating an AWS account. Existing repos are cloned and their lint/test/typecheck/build scripts are run without AWS/GitHub credentials in the child process. A failed build aborts before account creation or push.
 
-For an existing repo, application files and existing workflows are not overwritten. Missing workflows are added; if `preview.yml` or `deploy.yml` already exists, the integration uses `aws-preview.yml` or `aws-deploy.yml` and reports the original as ignored. An existing `nextjs-app.yml` is merged while preserving unknown keys and comments. Changes are committed atomically only after preflight succeeds.
+For an existing repo, application files are not overwritten. The standard `preview.yml` and `deploy.yml` are added or replaced at their standard paths. An existing `nextjs-app.yml` is merged while preserving unknown keys and comments. Changes are committed atomically only after preflight succeeds.
 
 ## Project manifest and workflows
 
-`nextjs-app.yml` is YAML configuration rooted at `app:`, including `aws-region`, `deployment-type`, `deployment-strategy`, account/email/role values, `domain`, package manager, Node version, output directory, and project-owned commands. When no domain is supplied, `domain` is explicitly `null`; domain projects declare ACM and Route 53.
+`nextjs-app.yml` follows the shared action's `app` config contract: slug, directory, Node version, AWS region, deployment type, and optional domain. The workflows call the shared production and preview reusable workflows, passing this config path; they are the same for static and SSR projects.
 
-Project workflows read the manifest. Preview OIDC is restricted to the `pull_request` subject and the preview job has no GitHub Environment. A manual preview dispatch runs validation/build only and does not deploy: a manual dispatch has a `ref` subject, which the required preview trust policy intentionally does not accept. Production runs on the default branch/`main`, declares `environment: production`, and assumes the production role.
+Configure the repository secret `AWS_ROLE_ARN` with the preview role ARN, and the `production` environment secret of the same name with the production role ARN. The reusable workflows inherit secrets and use GitHub OIDC. For custom domains, also configure `CLOUDFLARE_API_TOKEN` in the `production` environment.
+
+The shared workflows keep Terraform state in the cross-account S3 bucket `on-the-edge-terraform-state` (region `eu-north-1`) under `nextjs/on-the-edge-cloud/<repository>/`. The generated roles receive identity permissions for that repository's state prefix. The bucket owner's S3 bucket policy must also allow the preview and production role ARNs to get the bucket location, list that prefix, and read, write, and delete objects there.
+
+For SSR, the current Terraform module does not attach a permissions boundary to its Lambda execution roles. Accordingly, the generated deployment role can create and manage inline policies on roles whose names start with the app slug, and pass those roles only to Lambda. A permissions boundary should only be enforced after the shared Terraform module supports attaching it.
 
 ## Development
 
