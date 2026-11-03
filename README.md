@@ -28,6 +28,8 @@ If you plan to use custom domains, configure the organization secret `CLOUDFLARE
 
 El bootstrap crea o actualiza `account-factory-github-bootstrap` en la cuenta de gestión `191926569765`. Su trust policy acepta únicamente `repo:on-the-edge-cloud/account-factory:ref:refs/heads/main` y reutiliza el proveedor OIDC existente; no crea access keys.
 
+También actualiza la política del bucket existente `on-the-edge-terraform-state`, verificando que pertenece a la cuenta de gestión. Conserva los statements ajenos y reemplaza únicamente los tres statements `AccountFactoryStateLocation`, `AccountFactoryStateList` y `AccountFactoryStateObjects`. Autoriza roles `github-actions-<Project>-preview/production` de la misma organización AWS, con tags `ManagedBy=account-factory` y `Project`, limitando sus objetos y listados al prefijo de ese proyecto. Incluye state y locks de proyectos static y SSR existentes y futuros. La sesión de CloudShell necesita permisos para consultar la organización y leer/actualizar la política S3, además de gestionar el rol IAM.
+
 1. Abre AWS CloudShell con una sesión autenticada en la cuenta de gestión `191926569765`.
 2. Copia [create-account-factory-bootstrap.sh](create-account-factory-bootstrap.sh) a CloudShell. Puedes crear el archivo con `nano create-account-factory-bootstrap.sh`, pegar el contenido y guardar con `Ctrl+O`, `Enter`, `Ctrl+X`.
 3. Ejecútalo con `bash create-account-factory-bootstrap.sh`. El script verifica la cuenta activa y el proveedor OIDC antes de crear o actualizar el rol.
@@ -56,7 +58,7 @@ The factory configures GitHub Actions automatically: it sets the repository secr
 
 GitHub environment/secret configuration happens after the AWS account and repository commit are created. If that final step fails, the error is surfaced, but the factory does not roll back those AWS or repository changes.
 
-The shared workflows keep Terraform state in the cross-account S3 bucket `on-the-edge-terraform-state` (region `eu-north-1`) under `nextjs/on-the-edge-cloud/<repository>/`. The generated roles receive identity permissions for that repository's state prefix. The bucket owner's S3 bucket policy must also allow the preview and production role ARNs to get the bucket location, list that prefix, and read, write, and delete objects there.
+The shared workflows keep Terraform state in the cross-account S3 bucket `on-the-edge-terraform-state` (region `eu-north-1`) under `nextjs/on-the-edge-cloud/<repository>/`. The generated roles receive identity permissions for that repository's state prefix. Run the updated bootstrap once in the management account to configure the corresponding bucket-side access, including for previously created projects; then rerun their deployment workflow, not account creation. Existing explicit denies still apply. If the bucket uses SSE-KMS, the KMS key policy and deployment roles also need encryption/decryption permissions; this bootstrap does not modify KMS policies.
 
 For SSR, the current Terraform module does not attach a permissions boundary to its Lambda execution roles. Accordingly, the generated deployment role can create and manage inline policies on roles whose names start with the app slug, and pass those roles only to Lambda. A permissions boundary should only be enforced after the shared Terraform module supports attaching it.
 
