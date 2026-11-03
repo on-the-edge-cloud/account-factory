@@ -210,7 +210,6 @@ export async function configureProjectRepository(
     owner,
     repo: projectName,
     environment_name: environmentName,
-    reviewers: [],
     deployment_branch_policy: {
       protected_branches: false,
       custom_branch_policies: true,

@@ -67,16 +67,15 @@ describe("configureProjectRepository", () => {
       cloudflareApiToken: "cloudflare-secret",
     });
 
-    expect(githubApi.repos.createOrUpdateEnvironment).toHaveBeenCalledWith(
-      expect.objectContaining({
-        environment_name: "production",
-        reviewers: [],
-        deployment_branch_policy: {
-          protected_branches: false,
-          custom_branch_policies: true,
-        },
-      }),
-    );
+    expect(githubApi.repos.createOrUpdateEnvironment).toHaveBeenCalledWith({
+      owner: "on-the-edge-cloud",
+      repo: "demo",
+      environment_name: "production",
+      deployment_branch_policy: {
+        protected_branches: false,
+        custom_branch_policies: true,
+      },
+    });
     expect(githubApi.repos.deleteDeploymentBranchPolicy).toHaveBeenCalledWith(
       expect.objectContaining({ branch_policy_id: 12 }),
     );
@@ -114,10 +113,27 @@ describe("configureProjectRepository", () => {
       );
       return [secret.secret_name, sodium.to_string(plaintext)];
     });
+
     expect(decryptedEnvironmentSecrets).toEqual([
       ["AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/production"],
       ["CLOUDFLARE_API_TOKEN", "cloudflare-secret"],
     ]);
+  });
+
+  it("surfaces environment errors without configuring policies or secrets", async () => {
+    const error = new Error("Environment configuration rejected");
+    githubApi.repos.createOrUpdateEnvironment.mockRejectedValue(error);
+
+    await expect(
+      configureProjectRepository("token", "demo", {
+        previewRoleArn: "preview",
+        productionRoleArn: "production",
+      }),
+    ).rejects.toBe(error);
+
+    expect(githubApi.repos.listDeploymentBranchPolicies).not.toHaveBeenCalled();
+    expect(githubApi.actions.getRepoPublicKey).not.toHaveBeenCalled();
+    expect(githubApi.actions.getEnvironmentPublicKey).not.toHaveBeenCalled();
   });
 
   it("does not create a Cloudflare secret when no custom-domain token is supplied", async () => {

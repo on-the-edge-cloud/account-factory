@@ -38,7 +38,7 @@ For an existing repo, application files are not overwritten. The standard `previ
 
 `nextjs-app.yml` follows the shared action's `app` config contract: slug, directory, Node version, AWS region, deployment type, and optional domain. The workflows call the shared production and preview reusable workflows, passing this config path; they are the same for static and SSR projects.
 
-The factory configures GitHub Actions automatically: it sets the repository secret `AWS_ROLE_ARN` to the preview role ARN, creates the `production` environment restricted to the `main` branch, and sets its `AWS_ROLE_ARN` secret to the production role ARN. No required reviewers are configured. When a custom domain is requested, it also sets `CLOUDFLARE_API_TOKEN` in the production environment. The reusable workflows inherit these secrets and use GitHub OIDC.
+The factory configures GitHub Actions automatically: it sets the repository secret `AWS_ROLE_ARN` to the preview role ARN, creates the `production` environment restricted to the `main` branch, and sets its `AWS_ROLE_ARN` secret to the production role ARN. The environment request omits reviewer settings to avoid requesting a protection rule unsupported by some billing plans; existing reviewer rules are left unchanged. Private repositories still require a GitHub plan that supports environments and deployment branch policies. When a custom domain is requested, it also sets `CLOUDFLARE_API_TOKEN` in the production environment. The reusable workflows inherit these secrets and use GitHub OIDC.
 
 GitHub environment/secret configuration happens after the AWS account and repository commit are created. If that final step fails, the error is surfaced, but the factory does not roll back those AWS or repository changes.
 
