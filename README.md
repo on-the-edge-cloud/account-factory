@@ -75,7 +75,7 @@ The shared workflows keep Terraform state in the cross-account S3 bucket `on-the
 
 For SSR, the current Terraform module does not attach a permissions boundary to its Lambda execution roles. Accordingly, the generated deployment role can create and manage inline policies on roles whose names start with the app slug, and pass those roles only to Lambda. A permissions boundary should only be enforced after the shared Terraform module supports attaching it.
 
-Deployment policies include S3 acceleration, lifecycle, replication, and encryption configuration reads for project buckets. These IAM action names are not covered by `s3:GetBucket*`. Changes to generated deployment policies do not update existing roles automatically; update their inline policies before retrying deployment. A failed Terraform apply may leave resources created, so inspect the remote state before importing or recreating a bucket.
+Deployment policies include S3 acceleration, lifecycle, replication, and encryption configuration reads for project buckets, plus `s3:PutEncryptionConfiguration` and object tag read/write/delete permissions. These IAM action names are not covered by `s3:GetBucket*`, `s3:PutBucket*`, or the basic object read/write actions. Changes to generated deployment policies do not update existing roles automatically; update their inline policies before retrying deployment. A failed Terraform apply may leave resources created, so inspect the remote state before importing or recreating a bucket.
 
 ## Development
 

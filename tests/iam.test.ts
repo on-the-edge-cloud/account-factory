@@ -8,7 +8,7 @@ import { organizationsError } from "../src/clients/organizations.js";
 
 describe("IAM role configuration", () => {
   it.each(["static", "ssr"] as const)(
-    "grants S3 configuration reads for %s project buckets only",
+    "grants S3 configuration and object tagging access for %s project buckets only",
     (appType) => {
       const policy = deploymentPolicy(
         "123456789012",
@@ -22,6 +22,10 @@ describe("IAM role configuration", () => {
         "s3:GetLifecycleConfiguration",
         "s3:GetReplicationConfiguration",
         "s3:GetEncryptionConfiguration",
+        "s3:PutEncryptionConfiguration",
+        "s3:GetObjectTagging",
+        "s3:PutObjectTagging",
+        "s3:DeleteObjectTagging",
       ]) {
         const statements = policy.Statement.filter((statement) =>
           statement.Action.includes(action),
