@@ -104,6 +104,58 @@ describe("IAM role configuration", () => {
     );
   });
 
+  it.each([
+    [
+      "iam:ListAttachedRolePolicies",
+      "arn:aws:iam::123456789012:role/storefront*",
+    ],
+    [
+      "dynamodb:DescribeContinuousBackups",
+      [
+        "arn:aws:dynamodb:*:123456789012:table/storefront*",
+        "arn:aws:dynamodb:*:123456789012:table/storefront*/index/*",
+      ],
+    ],
+    [
+      "dynamodb:DescribeTimeToLive",
+      [
+        "arn:aws:dynamodb:*:123456789012:table/storefront*",
+        "arn:aws:dynamodb:*:123456789012:table/storefront*/index/*",
+      ],
+    ],
+    [
+      "logs:ListTagsForResource",
+      "arn:aws:logs:*:123456789012:log-group:/aws/lambda/storefront*",
+    ],
+    [
+      "logs:TagResource",
+      "arn:aws:logs:*:123456789012:log-group:/aws/lambda/storefront*",
+    ],
+    [
+      "logs:UntagResource",
+      "arn:aws:logs:*:123456789012:log-group:/aws/lambda/storefront*",
+    ],
+  ])("grants %s only to SSR project resources", (action, resource) => {
+    for (const appType of ["ssr", "static"] as const) {
+      const policy = deploymentPolicy(
+        "123456789012",
+        "storefront",
+        appType,
+      ) as {
+        Statement: Array<{ Action: string[]; Resource: string | string[] }>;
+      };
+      const matching = policy.Statement.filter((statement) =>
+        statement.Action.includes(action),
+      );
+      if (appType === "ssr") {
+        expect(matching).toHaveLength(1);
+        expect(matching[0].Resource).toEqual(resource);
+      } else {
+        expect(matching).toHaveLength(0);
+      }
+    }
+  });
+
   it("does not grant static projects IAM or Lambda deployment permissions", () => {
     const policy = deploymentPolicy("123456789012", "storefront", "static") as {
       Statement: Array<{ Action: string[] }>;
