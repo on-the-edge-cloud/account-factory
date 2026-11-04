@@ -49,7 +49,14 @@ case "$1 $2" in
       fi
     done
     ;;
-  "iam get-role"|"iam update-assume-role-policy"|"iam put-role-policy") ;;
+  "iam update-assume-role-policy")
+    for argument in "$@"; do
+      if [[ "$argument" == file://* ]]; then
+        cp "\${argument#file://}" "$TEST_TRUST"
+      fi
+    done
+    ;;
+  "iam get-role"|"iam put-role-policy") ;;
   *) echo "Unexpected AWS operation: $1 $2" >&2; exit 1 ;;
 esac
 `,
@@ -60,6 +67,7 @@ esac
         ...process.env,
         PATH: `${directory}:${process.env.PATH}`,
         TEST_POLICY: policyPath,
+        TEST_TRUST: join(directory, "trust.json"),
       };
       const run = (policyError = "") =>
         execFileSync("bash", [script], {
@@ -68,6 +76,23 @@ esac
         });
 
       run();
+      const trust = JSON.parse(readFileSync(environment.TEST_TRUST, "utf8"));
+      expect(trust.Statement).toHaveLength(1);
+      expect(trust.Statement[0]).toEqual({
+        Effect: "Allow",
+        Principal: {
+          Federated:
+            "arn:aws:iam::191926569765:oidc-provider/token.actions.githubusercontent.com",
+        },
+        Action: "sts:AssumeRoleWithWebIdentity",
+        Condition: {
+          StringEquals: {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+            "token.actions.githubusercontent.com:sub":
+              "repo:on-the-edge-cloud@164330269/account-factory@1429556874:ref:refs/heads/main",
+          },
+        },
+      });
       const firstPolicy = readFileSync(policyPath, "utf8");
       const policy = JSON.parse(firstPolicy);
       expect(policy.Statement).toHaveLength(4);

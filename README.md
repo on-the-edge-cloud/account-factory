@@ -26,7 +26,7 @@ If you plan to use custom domains, configure the organization secret `CLOUDFLARE
 
 ## Configurar la cuenta de gestión
 
-El bootstrap crea o actualiza `account-factory-github-bootstrap` en la cuenta de gestión `191926569765`. Su trust policy acepta únicamente `repo:on-the-edge-cloud/account-factory:ref:refs/heads/main` y reutiliza el proveedor OIDC existente; no crea access keys.
+El bootstrap crea o actualiza `account-factory-github-bootstrap` en la cuenta de gestión `191926569765`. Su trust policy acepta únicamente `repo:on-the-edge-cloud@164330269/account-factory@1429556874:ref:refs/heads/main`, el subject OIDC observado en CloudTrail que incluye los IDs de la organización y del repositorio. Reutiliza el proveedor OIDC existente; no crea access keys ni acepta el subject antiguo sin IDs. Si cambia el formato OIDC, actualiza el subject exacto del bootstrap y vuelve a ejecutarlo antes de relanzar Create project.
 
 También actualiza la política del bucket existente `on-the-edge-terraform-state`, verificando que pertenece a la cuenta de gestión. Conserva los statements ajenos y reemplaza únicamente los tres statements `AccountFactoryStateLocation`, `AccountFactoryStateList` y `AccountFactoryStateObjects`. Autoriza roles `github-actions-<Project>-preview/production` de la misma organización AWS, con tags `ManagedBy=account-factory` y `Project`, limitando sus objetos y listados al prefijo de ese proyecto. Incluye state y locks de proyectos static y SSR existentes y futuros. La sesión de CloudShell necesita permisos para consultar la organización y leer/actualizar la política S3, además de gestionar el rol IAM.
 

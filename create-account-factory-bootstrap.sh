@@ -4,7 +4,9 @@ set -euo pipefail
 # ==== CONFIGURATION ====
 MANAGEMENT_ACCOUNT_ID="191926569765"
 GITHUB_ORG="on-the-edge-cloud"
+GITHUB_ORG_ID="164330269"
 GITHUB_REPO="account-factory"
+GITHUB_REPO_ID="1429556874"
 GITHUB_BRANCH="main"
 STATE_BUCKET="on-the-edge-terraform-state"
 
@@ -113,7 +115,7 @@ jq \
     ]
   )' "$BUCKET_POLICY_FILE" > "$TEMP_DIR/updated-bucket-policy.json"
 
-GITHUB_SUB="repo:${GITHUB_ORG}/${GITHUB_REPO}:ref:refs/heads/${GITHUB_BRANCH}"
+GITHUB_SUB="repo:${GITHUB_ORG}@${GITHUB_ORG_ID}/${GITHUB_REPO}@${GITHUB_REPO_ID}:ref:refs/heads/${GITHUB_BRANCH}"
 jq -n \
   --arg provider "$OIDC_PROVIDER_ARN" \
   --arg audience "$OIDC_AUDIENCE" \
