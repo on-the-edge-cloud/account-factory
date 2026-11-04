@@ -168,6 +168,32 @@ describe("IAM role configuration", () => {
     }
   });
 
+  it.each(["lambda:ListTags", "lambda:TagResource", "lambda:UntagResource"])(
+    "grants %s to SSR event source mappings in the project account",
+    (action) => {
+      for (const appType of ["ssr", "static"] as const) {
+        const policy = deploymentPolicy(
+          "123456789012",
+          "storefront",
+          appType,
+        ) as {
+          Statement: Array<{ Action: string[]; Resource: string | string[] }>;
+        };
+        const matching = policy.Statement.filter((statement) =>
+          statement.Action.includes(action),
+        );
+        expect(matching.map((statement) => statement.Resource)).toEqual(
+          appType === "ssr"
+            ? [
+                "arn:aws:lambda:*:123456789012:function:storefront*",
+                "arn:aws:lambda:*:123456789012:event-source-mapping:*",
+              ]
+            : [],
+        );
+      }
+    },
+  );
+
   it("does not grant static projects IAM or Lambda deployment permissions", () => {
     const policy = deploymentPolicy("123456789012", "storefront", "static") as {
       Statement: Array<{ Action: string[] }>;

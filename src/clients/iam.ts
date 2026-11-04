@@ -215,6 +215,15 @@ export function deploymentPolicy(
       {
         Effect: "Allow",
         Action: [
+          "lambda:ListTags",
+          "lambda:TagResource",
+          "lambda:UntagResource",
+        ],
+        Resource: `arn:aws:lambda:*:${accountId}:event-source-mapping:*`,
+      },
+      {
+        Effect: "Allow",
+        Action: [
           "dynamodb:CreateTable",
           "dynamodb:DeleteTable",
           "dynamodb:DescribeTable",
