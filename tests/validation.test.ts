@@ -8,11 +8,26 @@ import {
 const validInput = {
   projectName: "mi-proyecto",
   appType: "static" as const,
-  awsRegion: "eu-west-1",
+  awsRegion: "eu-north-1",
   nodeVersion: "22",
 };
 
 describe("project input validation", () => {
+  it("defaults to eu-north-1 when the region is omitted", () => {
+    expect(
+      validateProjectInput({
+        projectName: validInput.projectName,
+        appType: validInput.appType,
+      }).awsRegion,
+    ).toBe("eu-north-1");
+  });
+
+  it("preserves an explicitly selected region", () => {
+    expect(
+      validateProjectInput({ ...validInput, awsRegion: "eu-west-1" }).awsRegion,
+    ).toBe("eu-west-1");
+  });
+
   it.each([
     "Upper",
     "two--hyphens",

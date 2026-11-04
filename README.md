@@ -38,9 +38,22 @@ También actualiza la política del bucket existente `on-the-edge-terraform-stat
 
 Después, ejecuta **Actions → Create project → Run workflow** desde `main`. CloudShell usa las credenciales de la sesión autenticada; no hace falta configurar un perfil local ni access keys.
 
+### Autorizar otras regiones
+
+Para la SCP `p-im44ez6o` (`AdvancedModeRegionRestrictionSecurityControlPolicy`), copia [allow-project-regions.sh](allow-project-regions.sh) a CloudShell de la cuenta de gestión. La sesión necesita `organizations:DescribePolicy` y, para aplicar, `organizations:UpdatePolicy`.
+
+```sh
+bash allow-project-regions.sh
+bash allow-project-regions.sh --apply
+```
+
+El primer comando solo muestra la propuesta; el segundo la aplica y verifica. Por defecto añade `eu-west-1`, `eu-central-1`, `eu-west-2`, `eu-west-3` y `eu-north-1`. Para otra selección, pasa regiones separadas por espacios, por ejemplo `bash allow-project-regions.sh --apply eu-west-1 eu-central-1`. Conserva todas las regiones previas y modifica solo la lista de `RegionFloor`. Guarda la política original y la propuesta en un directorio `region-policy-backup-*` de CloudShell, y no sobrescribe una política que haya cambiado desde su lectura.
+
+El cambio afecta a todas las cuentas/OU que heredan esa SCP. No modifica las denegaciones específicas de `us-east-1`/`us-west-2`, otras SCP ni activa regiones opt-in. Si otra automatización administra esta política, alinea también su configuración de origen. AWS documenta la actualización de `RegionFloor` en [Activate advanced AWS features](https://docs.aws.amazon.com/accounts/latest/reference/activate-advanced-features.html). Tras aplicar, selecciona la región en Create project o actualiza el manifiesto de un proyecto existente y ejecuta su despliegue; el default de la fábrica sigue siendo `eu-north-1`.
+
 ## Create a project
 
-Run **Actions > Create project > Run workflow** from `main`. Inputs include the kebab-case project name, `static` or `ssr`, optional custom domain, AWS region, and Node version. Root emails use `fmoreno+<project_name>@ontheedge.cloud`.
+Run **Actions > Create project > Run workflow** from `main`. Inputs include the kebab-case project name, `static` or `ssr`, optional custom domain, AWS region (default `eu-north-1` for both app types), and Node version. The CLI uses the same region by default. Select another region only if the organization's SCPs permit deployment there. Existing project manifests are not changed automatically; update their `app.aws-region` to `eu-north-1` if needed and rerun deployment, not account creation. Root emails use `fmoreno+<project_name>@ontheedge.cloud`.
 
 AWS IAM limits role names to 64 characters. With the required `github-actions-<project_name>-production` name, the effective project-name limit is 38 characters even though the general input validation accepts up to 40; the factory rejects names that cannot form both required roles before creating an account.
 
@@ -61,6 +74,8 @@ GitHub environment/secret configuration happens after the AWS account and reposi
 The shared workflows keep Terraform state in the cross-account S3 bucket `on-the-edge-terraform-state` (region `eu-north-1`) under `nextjs/on-the-edge-cloud/<repository>/`. The generated roles receive identity permissions for that repository's state prefix. Run the updated bootstrap once in the management account to configure the corresponding bucket-side access, including for previously created projects; then rerun their deployment workflow, not account creation. Existing explicit denies still apply. If the bucket uses SSE-KMS, the KMS key policy and deployment roles also need encryption/decryption permissions; this bootstrap does not modify KMS policies.
 
 For SSR, the current Terraform module does not attach a permissions boundary to its Lambda execution roles. Accordingly, the generated deployment role can create and manage inline policies on roles whose names start with the app slug, and pass those roles only to Lambda. A permissions boundary should only be enforced after the shared Terraform module supports attaching it.
+
+Deployment policies include S3 acceleration, lifecycle, replication, and encryption configuration reads for project buckets. These IAM action names are not covered by `s3:GetBucket*`. Changes to generated deployment policies do not update existing roles automatically; update their inline policies before retrying deployment. A failed Terraform apply may leave resources created, so inspect the remote state before importing or recreating a bucket.
 
 ## Development
 

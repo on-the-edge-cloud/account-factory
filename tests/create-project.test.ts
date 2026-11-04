@@ -46,7 +46,7 @@ describe("project provisioning order", () => {
           {
             projectName: "demo",
             appType: "ssr",
-            awsRegion: "eu-west-1",
+            awsRegion: "eu-north-1",
             nodeVersion: "22",
           },
           { githubToken: "test-github-token" },

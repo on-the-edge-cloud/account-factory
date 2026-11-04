@@ -19,7 +19,7 @@ const projectInputSchema = z.object({
   awsRegion: z
     .string()
     .regex(/^[a-z]{2}(?:-[a-z]+)+-[0-9]$/)
-    .default("eu-west-1"),
+    .default("eu-north-1"),
   nodeVersion: z.string().regex(/^\d+$/).default("22"),
   customDomain: z
     .string()
@@ -27,7 +27,9 @@ const projectInputSchema = z.object({
     .optional(),
 });
 
-export function validateProjectInput(input: ProjectInput): ProjectInput {
+export function validateProjectInput(
+  input: z.input<typeof projectInputSchema>,
+): ProjectInput {
   const result = projectInputSchema.safeParse(input);
   if (!result.success) {
     throw new Error(

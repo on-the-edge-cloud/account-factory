@@ -9,7 +9,7 @@ import {
 const input = {
   projectName: "storefront",
   appType: "ssr" as const,
-  awsRegion: "eu-west-1",
+  awsRegion: "eu-north-1",
   nodeVersion: "22",
 };
 
@@ -23,7 +23,7 @@ describe("generated project files", () => {
         slug: "storefront",
         directory: ".",
         "node-version": "22",
-        "aws-region": "eu-west-1",
+        "aws-region": "eu-north-1",
         "deployment-type": "ssr",
         domain: "",
       },
@@ -152,6 +152,9 @@ describe("generated project files", () => {
     );
     expect(workflow.on.workflow_dispatch.inputs.aws_region.required).toBe(
       false,
+    );
+    expect(workflow.on.workflow_dispatch.inputs.aws_region.default).toBe(
+      "eu-north-1",
     );
   });
 });

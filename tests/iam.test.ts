@@ -7,6 +7,34 @@ import {
 import { organizationsError } from "../src/clients/organizations.js";
 
 describe("IAM role configuration", () => {
+  it.each(["static", "ssr"] as const)(
+    "grants S3 configuration reads for %s project buckets only",
+    (appType) => {
+      const policy = deploymentPolicy(
+        "123456789012",
+        "storefront",
+        appType,
+      ) as {
+        Statement: Array<{ Action: string[]; Resource: string | string[] }>;
+      };
+      for (const action of [
+        "s3:GetAccelerateConfiguration",
+        "s3:GetLifecycleConfiguration",
+        "s3:GetReplicationConfiguration",
+        "s3:GetEncryptionConfiguration",
+      ]) {
+        const statements = policy.Statement.filter((statement) =>
+          statement.Action.includes(action),
+        );
+        expect(statements).toHaveLength(1);
+        expect(statements[0].Resource).toEqual([
+          "arn:aws:s3:::storefront*",
+          "arn:aws:s3:::storefront*/*",
+        ]);
+      }
+    },
+  );
+
   it("uses the required role names and enforces AWS's name limit", () => {
     expect(roleNames("my-app")).toEqual({
       preview: "github-actions-my-app-preview",

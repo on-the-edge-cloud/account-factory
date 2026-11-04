@@ -9,7 +9,7 @@ async function main() {
   const input = validateProjectInput({
     projectName: process.env.PROJECT_NAME ?? "",
     appType: (process.env.APP_TYPE ?? "") as AppType,
-    awsRegion: process.env.AWS_REGION ?? "eu-west-1",
+    awsRegion: process.env.AWS_REGION ?? "eu-north-1",
     nodeVersion: process.env.NODE_VERSION ?? "22",
     customDomain: process.env.CUSTOM_DOMAIN || undefined,
   });
