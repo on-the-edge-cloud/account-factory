@@ -186,6 +186,8 @@ export function deploymentPolicy(
           "lambda:DeleteFunction",
           "lambda:GetFunction",
           "lambda:GetFunctionConfiguration",
+          "lambda:GetFunctionCodeSigningConfig",
+          "lambda:ListVersionsByFunction",
           "lambda:GetPolicy",
           "lambda:ListTags",
           "lambda:AddPermission",

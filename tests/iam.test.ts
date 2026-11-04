@@ -106,6 +106,14 @@ describe("IAM role configuration", () => {
 
   it.each([
     [
+      "lambda:ListVersionsByFunction",
+      "arn:aws:lambda:*:123456789012:function:storefront*",
+    ],
+    [
+      "lambda:GetFunctionCodeSigningConfig",
+      "arn:aws:lambda:*:123456789012:function:storefront*",
+    ],
+    [
       "iam:ListInstanceProfilesForRole",
       "arn:aws:iam::123456789012:role/storefront*",
     ],
