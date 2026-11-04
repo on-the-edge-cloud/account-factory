@@ -2,6 +2,7 @@ import {
   CreateOpenIDConnectProviderCommand,
   CreateRoleCommand,
   GetOpenIDConnectProviderCommand,
+  GetRoleCommand,
   IAMClient,
   ListOpenIDConnectProvidersCommand,
   PutRolePolicyCommand,
@@ -306,6 +307,49 @@ async function assumeAccountRole(
   return new IAMClient({
     credentials,
   });
+}
+
+export async function updateProjectRoles(
+  managementClient: STSClient,
+  accountId: string,
+  projectName: string,
+  appType: AppType,
+  customDomain?: string,
+): Promise<RoleNames> {
+  const roles = roleNames(projectName);
+  const iam = await assumeAccountRole(managementClient, accountId);
+  for (const name of Object.values(roles)) {
+    const { Role } = await iam.send(new GetRoleCommand({ RoleName: name }));
+    if (
+      Role?.Arn !== `arn:aws:iam::${accountId}:role/${name}` ||
+      !Role.Tags?.some(
+        (tag) => tag.Key === "Project" && tag.Value === projectName,
+      ) ||
+      !Role.Tags?.some(
+        (tag) => tag.Key === "ManagedBy" && tag.Value === "account-factory",
+      )
+    ) {
+      throw new Error(
+        `Role ${name} is not an account-factory role for ${projectName} in ${accountId}; no policies were updated.`,
+      );
+    }
+  }
+  const policy = deploymentPolicy(
+    accountId,
+    projectName,
+    appType,
+    customDomain,
+  );
+  for (const name of Object.values(roles)) {
+    await iam.send(
+      new PutRolePolicyCommand({
+        RoleName: name,
+        PolicyName: `${projectName}-deployment`,
+        PolicyDocument: JSON.stringify(policy),
+      }),
+    );
+  }
+  return roles;
 }
 
 export async function configureProjectRoles(

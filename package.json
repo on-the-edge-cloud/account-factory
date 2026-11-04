@@ -5,6 +5,7 @@
   "packageManager": "yarn@1.22.22",
   "scripts": {
     "create-project": "tsx src/scripts/create-project.ts",
+    "update-project": "tsx src/scripts/update-project.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

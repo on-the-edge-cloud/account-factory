@@ -1,0 +1,56 @@
+name: Update project
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: Existing project repository name
+        required: true
+        type: string
+      account_id:
+        description: Existing project AWS account ID (12 digits)
+        required: true
+        type: string
+      app_type:
+        description: Target deployment type (previous infrastructure is retained)
+        required: true
+        type: choice
+        options:
+          - ssr
+          - static
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: update-project-${{ inputs.project_name }}
+  cancel-in-progress: false
+
+jobs:
+  update-project:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: yarn
+      - run: corepack enable && yarn install --frozen-lockfile
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ACCOUNT_FACTORY_ROLE_ARN }}
+          aws-region: eu-north-1
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.ACCOUNT_FACTORY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.ACCOUNT_FACTORY_APP_PRIVATE_KEY }}
+          owner: on-the-edge-cloud
+      - run: yarn update-project
+        env:
+          PROJECT_NAME: ${{ inputs.project_name }}
+          ACCOUNT_ID: ${{ inputs.account_id }}
+          APP_TYPE: ${{ inputs.app_type }}
+          ACCOUNT_FACTORY_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}

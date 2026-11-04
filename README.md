@@ -61,6 +61,24 @@ The workflow reports the account ID, root email, both role ARNs, repository URL,
 
 For an existing repo, application files are not overwritten. The standard `preview.yml` and `deploy.yml` are added or replaced at their standard paths. An existing `nextjs-app.yml` is merged while preserving unknown keys and comments. Changes are committed atomically only after preflight succeeds.
 
+## Update an existing project (static / SSR)
+
+Run **Actions > Update project > Run workflow** from `main`. Supply the existing repository name, its existing 12-digit AWS account ID, and the target type (`ssr` or `static`). For example, use `parking-management`, its current account ID, and `ssr` to repair the missing IAM/DynamoDB/SQS/Logs permissions without creating another account.
+
+The workflow assumes `OrganizationAccountAccessRole` in that account using the same management role as Create project. That role must allow assuming access to existing project accounts too. Both deployment roles must already exist with matching account ARNs and `Project` / `ManagedBy=account-factory` tags. It replaces only their `<project>-deployment` inline policies with the current generator, including custom-domain permissions read from the manifest. Trust policies, OIDC providers, secrets, caller workflows, and application files are unchanged.
+
+Only `app.deployment-type` is changed in `nextjs-app.yml`; all other settings and comments are preserved. The default branch must be `main` and the manifest slug must match the factory-generated slug. IAM updates finish before the manifest commit, which normally triggers the existing deployment caller. If the manifest already has the target type, policies are still refreshed without an empty commit: rerun the project's deployment workflow manually.
+
+**This is not an infrastructure migration.** Static and SSR use separate Terraform states. Previous production/preview resources remain managed by their old state, are not destroyed, and can continue generating costs. Do not copy or delete state files. A custom domain already attached to the previous CloudFront distribution needs a separate, controlled cutover. Switching to static removes SSR deployment permissions; use an administrative role for later cleanup of retained SSR resources. Existing PR branches need their manifests updated separately.
+
+Stop concurrent project deployments before updating. Prepare the application configuration separately: remove `output: "export"` for SSR features, or configure and validate static export before switching to static. This workflow does not build the application; the project deployment performs its normal build. There is no rollback across IAM and GitHub: if an update fails, inspect both role policies and the manifest, then retry with the same account. Do not rerun Create project.
+
+Local equivalent, with management-account credentials and `ACCOUNT_FACTORY_GITHUB_TOKEN` configured:
+
+```sh
+PROJECT_NAME=parking-management ACCOUNT_ID=147777764287 APP_TYPE=ssr yarn update-project
+```
+
 ## Project manifest and workflows
 
 `nextjs-app.yml` follows the shared action's `app` config contract: slug, directory, Node version, AWS region, deployment type, and optional domain. The workflows call the shared production and preview reusable workflows, passing this config path; they are the same for static and SSR projects.
