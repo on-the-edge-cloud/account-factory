@@ -106,6 +106,10 @@ describe("IAM role configuration", () => {
 
   it.each([
     [
+      "iam:ListInstanceProfilesForRole",
+      "arn:aws:iam::123456789012:role/storefront*",
+    ],
+    [
       "iam:ListAttachedRolePolicies",
       "arn:aws:iam::123456789012:role/storefront*",
     ],
